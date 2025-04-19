@@ -61,6 +61,13 @@ class SAM:
             ButtonType.SELECT.value: 0b100,
             ButtonType.SHUTDOWN.value: 0b1000
         }
+        self._button_press_callbacks: Dict[ButtonType, List[Callable]] = {
+            bt: [] for bt in ButtonType
+        }
+        self._button_release_callbacks: Dict[ButtonType, List[Callable]] = {
+            bt: [] for bt in ButtonType
+        }
+        self._previous_button_state = 0
         # LED task status tracking
         self._led_task_running = False
         self._led_task_completed = threading.Event()
@@ -102,58 +109,130 @@ class SAM:
             
         buffer = ""
         while self._running:
+            lines_to_process = []
             try:
-                if self._serial.in_waiting:
-                    data = self._serial.read(1).decode('utf-8', errors='replace')
+                # Read all available data
+                if self._serial.in_waiting > 0:
+                    data = self._serial.read(self._serial.in_waiting).decode('utf-8', errors='replace')
                     buffer += data
-                    
-                    if '\n' in buffer:
-                        lines = buffer.split('\n')
-                        buffer = lines[-1]  # Keep the incomplete line
-                        
-                        for line in lines[:-1]:  # Process complete lines
-                            line = line.strip()
-                            if not line:
-                                continue
-                                
-                            try:
-                                # Try parsing as integer for button state
-                                state = int(line)
-                                self._process_button_state(state)
-                            except ValueError:
-                                # Check for LED task completion message
-                                if "[Task] Neopixel Completed" in line:
-                                    self._led_task_running = False
-                                    self._led_task_completed.set()
-                                    print("LED task completed")
-                                # Other messages
-                                elif "[RP2040 DEBUG]" in line:
-                                    print(f"SAM Debug: {line}")
-                                elif "StartScreen" in line:
-                                    print("SAM starting screen")
-                                else:
-                                    print(f"SAM message: {line}")
+                
+                # Extract all complete lines from the buffer
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    lines_to_process.append(line)
+
+            except serial.SerialException as e:
+                print(f"Serial error in read loop: {e}")
+                self._running = False # Stop loop on serial error
+                continue # Skip processing for this iteration
             except Exception as e:
                 print(f"Error reading from SAM: {e}")
-                time.sleep(0.1)
-            
-            time.sleep(0.01)  # Small sleep to prevent CPU hogging
+                # Consider a tiny sleep if high CPU becomes an issue
+                # time.sleep(0.0001) 
+
+            # Process all lines extracted in this iteration
+            for line in lines_to_process:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                try:
+                    # Try parsing as integer for button state
+                    state = int(line)
+                    # Use the more robust XOR state processing from the previous attempt
+                    self._process_button_state_xor(state) 
+                except ValueError:
+                    # Check for LED task completion message
+                    if "[Task] Neopixel Completed" in line:
+                        self._led_task_running = False
+                        self._led_task_completed.set()
+                        # print("LED task completed") # Optional: Reduce noise
+                    # Other messages
+                    elif "[RP2040 DEBUG]" in line:
+                        # print(f"SAM Debug: {line}") # Optional: Reduce noise
+                        pass
+                    elif "StartScreen" in line:
+                        print("SAM starting screen")
+                    else:
+                        # print(f"SAM message: {line}") # Optional: Reduce noise
+                        pass
+                except Exception as e:
+                    print(f"Error processing SAM data: {e}")
+
+            # No sleep by default for maximum responsiveness.
+            # If CPU usage is too high, uncomment the sleep below.
+            # time.sleep(0.0001) # e.g., 0.1 ms sleep
     
+    # Renamed the XOR processing method to avoid conflict if user merges changes
+    def _process_button_state_xor(self, state: int) -> None:
+        """
+        Process button state and trigger press/release callbacks based on transitions.
+        Uses XOR to detect changes even if multiple state updates occur between reads.
+        """
+        changed_bits = self._previous_button_state ^ state
+
+        for button_type in ButtonType:
+            mask = self._button_state_map[button_type.value]
+            
+            # Check if this specific button's state changed
+            if changed_bits & mask:
+                # Bit changed and is now set (0 -> 1 transition) -> Press
+                if state & mask:
+                    for callback in self._button_press_callbacks[button_type]:
+                        try:
+                            callback()
+                        except Exception as e:
+                            print(f"Error in {button_type.name} press callback: {e}")
+                # Bit changed and is now unset (1 -> 0 transition) -> Release
+                else:
+                    for callback in self._button_release_callbacks[button_type]:
+                        try:
+                            callback()
+                        except Exception as e:
+                            print(f"Error in {button_type.name} release callback: {e}")
+        
+        self._previous_button_state = state  # Update previous state
+
+    # Keep the original _process_button_state method for now, 
+    # in case the user prefers the simpler logic or wants to compare.
+    # The _read_serial loop now calls _process_button_state_xor.
     def _process_button_state(self, state: int) -> None:
         """
-        Process button state received from SAM and trigger callbacks.
-        
-        Args:
-            state: Integer representing button state bitmask
+        Original method: Process button state based on simple comparison with previous state.
         """
         for button_type in ButtonType:
-            button_mask = self._button_state_map.get(button_type.value, 0)
-            if state & button_mask:
-                for callback in self._button_callbacks[button_type]:
+            mask = self._button_state_map[button_type.value]
+            # Button pressed (0 -> 1 transition)
+            if (state & mask) and not (self._previous_button_state & mask):
+                for callback in self._button_press_callbacks[button_type]:
                     try:
                         callback()
                     except Exception as e:
-                        print(f"Error in {button_type.name} button callback: {e}")
+                        print(f"Error in {button_type.name} press callback: {e}")
+            # Button released (1 -> 0 transition)
+            elif not (state & mask) and (self._previous_button_state & mask):
+                for callback in self._button_release_callbacks[button_type]:
+                    try:
+                        callback()
+                    except Exception as e:
+                        print(f"Error in {button_type.name} release callback: {e}")
+        self._previous_button_state = state  # Update previous state
+    
+    def register_button_press_callback(
+        self, button: ButtonType, callback: Callable
+    ) -> None:
+        """
+        Register a callback for when a button is pressed.
+        """
+        self._button_press_callbacks[button].append(callback)
+    
+    def register_button_release_callback(
+        self, button: ButtonType, callback: Callable
+    ) -> None:
+        """
+        Register a callback for when a button is released.
+        """
+        self._button_release_callbacks[button].append(callback)
     
     def register_button_callback(self, button: ButtonType, callback: Callable) -> None:
         """
