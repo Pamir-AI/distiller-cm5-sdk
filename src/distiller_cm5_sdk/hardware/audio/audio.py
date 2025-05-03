@@ -11,6 +11,7 @@ import threading
 import tempfile
 import wave
 import numpy as np
+import platform
 from typing import Optional, Union, Callable, Tuple, List, BinaryIO
 
 
@@ -28,10 +29,33 @@ class Audio:
     - Record audio to a stream for real-time use
     - Play audio from files
     - Play audio from streams
-    - Adjust microphone volume/gain
-    - Adjust speaker volume
+    - Adjust microphone volume/gain (Optional)
+    - Adjust speaker volume (Optional)
     """
-    
+
+    # Default hardware paths for PamirAI soundcard controls
+    MIC_GAIN_PATH = "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/input_gain"
+    SPEAKER_VOLUME_PATH = "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/volume_level"
+
+    @staticmethod
+    def is_raspberry_pi() -> bool:
+        """Check if the current system is a Raspberry Pi."""
+        try:
+            if os.path.exists("/proc/device-tree/model"):
+                with open("/proc/device-tree/model", "r") as f:
+                    return "raspberry" in f.read().lower()
+            elif os.path.exists("/sys/firmware/devicetree/base/model"):
+                with open("/sys/firmware/devicetree/base/model", "r") as f:
+                    return "raspberry" in f.read().lower()
+        except Exception:
+            return False
+        return False
+
+    @staticmethod
+    def has_audio_controls() -> bool:
+        """Check if this system has the PamirAI soundcard controls."""
+        return os.path.exists(Audio.MIC_GAIN_PATH) and os.path.exists(Audio.SPEAKER_VOLUME_PATH)
+
     def __init__(self, 
                 sample_rate: int = 48000,
                 channels: int = 2,
@@ -63,6 +87,9 @@ class Audio:
         self._mic_gain = 50
         self._speaker_volume = 60
         
+        # Check if we're on a system with hardware audio controls
+        self._has_hw_controls = Audio.has_audio_controls()
+
         # Recording state
         self._is_recording = False
         self._record_thread = None
@@ -81,9 +108,10 @@ class Audio:
             self.check_system_config()
             
         # Apply default settings
-        self.set_mic_gain(self._mic_gain)
-        self.set_speaker_volume(self._speaker_volume)
-        
+        if self._has_hw_controls:
+            self.set_mic_gain(self._mic_gain)
+            self.set_speaker_volume(self._speaker_volume)
+
     def check_system_config(self) -> bool:
         """
         Check if the system is properly configured for audio use.
@@ -104,17 +132,18 @@ class Audio:
             subprocess.run(["aplay", "--version"], capture_output=True, check=False)
         except FileNotFoundError:
             raise AudioError("aplay not found. Please install ALSA utils package.")
-        
+
         # Check if input/output paths exist
-        mic_gain_path = "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/input_gain"
-        speaker_volume_path = "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/volume_level"
-        
-        if not os.path.exists(mic_gain_path):
-            raise AudioError(f"Microphone gain control path not found: {mic_gain_path}")
-            
-        if not os.path.exists(speaker_volume_path):
-            raise AudioError(f"Speaker volume control path not found: {speaker_volume_path}")
-            
+        if Audio.is_raspberry_pi():
+            # Only warn but don't fail if paths don't exist
+            if not os.path.exists(Audio.MIC_GAIN_PATH):
+                print(f"Warning: Microphone gain control path not found: {Audio.MIC_GAIN_PATH}")
+                print("Volume control features will be disabled.")
+
+            if not os.path.exists(Audio.SPEAKER_VOLUME_PATH):
+                print(f"Warning: Speaker volume control path not found: {Audio.SPEAKER_VOLUME_PATH}")
+                print("Volume control features will be disabled.")
+
         # List available audio devices
         try:
             result = subprocess.run(
@@ -123,10 +152,10 @@ class Audio:
                 text=True,
                 check=False
             )
-            if "no soundcards found" in result.stderr:
-                raise AudioError("No audio input devices detected")
+            if result.returncode != 0 or "no soundcards found" in result.stderr:
+                print("Warning: No audio input devices detected. Continuing anyway.")
         except Exception as e:
-            raise AudioError(f"Error checking audio devices: {str(e)}")
+            print(f"Warning: Error checking audio devices: {str(e)}")
             
         return True
         
@@ -140,6 +169,10 @@ class Audio:
         Raises:
             AudioError: If setting the gain fails
         """
+        if not self._has_hw_controls:
+            self._mic_gain = gain
+            return
+
         self._mic_gain = Audio.set_mic_gain_static(gain)
     
     @staticmethod
@@ -159,18 +192,23 @@ class Audio:
         if not isinstance(gain, int) or gain < 0:
             raise AudioError(f"Invalid gain value: {gain}. Must be a positive integer.")
             
+        # If we don't have the control file, just return the requested gain
+        if not os.path.exists(Audio.MIC_GAIN_PATH):
+            return gain
+
         try:
             # Use sudo to write to the system control file
-            cmd = f"echo {gain} | sudo tee /sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/input_gain > /dev/null"
+            cmd = f"echo {gain} | sudo tee {Audio.MIC_GAIN_PATH} > /dev/null"
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=False)
             
             if result.returncode != 0:
-                raise AudioError(f"Failed to set microphone gain: {result.stderr}")
+                print(f"Warning: Failed to set microphone gain: {result.stderr}")
                 
             return gain
         except Exception as e:
-            raise AudioError(f"Error setting microphone gain: {str(e)}")
-    
+            print(f"Warning: Error setting microphone gain: {str(e)}")
+            return gain
+
     def get_mic_gain(self) -> int:
         """
         Get the current microphone gain/volume.
@@ -181,6 +219,9 @@ class Audio:
         Raises:
             AudioError: If getting the gain fails
         """
+        if not self._has_hw_controls:
+            return self._mic_gain
+
         self._mic_gain = Audio.get_mic_gain_static()
         return self._mic_gain
             
@@ -195,24 +236,30 @@ class Audio:
         Raises:
             AudioError: If getting the gain fails
         """
+        # If we don't have the control file, return a default value
+        if not os.path.exists(Audio.MIC_GAIN_PATH):
+            return 0
+
         try:
             # Read from the system control file
             result = subprocess.run(
-                ["sudo", "cat", "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/input_gain"],
+                ["sudo", "cat", Audio.MIC_GAIN_PATH],
                 capture_output=True,
                 text=True,
                 check=False
             )
             
             if result.returncode != 0:
-                raise AudioError(f"Failed to get microphone gain: {result.stderr}")
-                
+                print(f"Warning: Failed to get microphone gain: {result.stderr}")
+                return 0
+
             # Return the gain value
             return int(result.stdout.strip())
             
         except Exception as e:
-            raise AudioError(f"Error getting microphone gain: {str(e)}")
-    
+            print(f"Warning: Error getting microphone gain: {str(e)}")
+            return 0
+
     def set_speaker_volume(self, volume: int) -> None:
         """
         Set the speaker volume.
@@ -223,6 +270,10 @@ class Audio:
         Raises:
             AudioError: If setting the volume fails
         """
+        if not self._has_hw_controls:
+            self._speaker_volume = volume
+            return
+
         self._speaker_volume = Audio.set_speaker_volume_static(volume)
     
     @staticmethod
@@ -242,18 +293,23 @@ class Audio:
         if not isinstance(volume, int) or volume < 0:
             raise AudioError(f"Invalid volume value: {volume}. Must be a positive integer.")
             
+        # If we don't have the control file, just return the requested volume
+        if not os.path.exists(Audio.SPEAKER_VOLUME_PATH):
+            return volume
+
         try:
             # Use sudo to write to the system control file
-            cmd = f"echo {volume} | sudo tee /sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/volume_level > /dev/null"
+            cmd = f"echo {volume} | sudo tee {Audio.SPEAKER_VOLUME_PATH} > /dev/null"
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=False)
-            
+
             if result.returncode != 0:
-                raise AudioError(f"Failed to set speaker volume: {result.stderr}")
+                print(f"Warning: Failed to set speaker volume: {result.stderr}")
                 
             return volume
         except Exception as e:
-            raise AudioError(f"Error setting speaker volume: {str(e)}")
-    
+            print(f"Warning: Error setting speaker volume: {str(e)}")
+            return volume
+
     def get_speaker_volume(self) -> int:
         """
         Get the current speaker volume.
@@ -264,6 +320,9 @@ class Audio:
         Raises:
             AudioError: If getting the volume fails
         """
+        if not self._has_hw_controls:
+            return self._speaker_volume
+
         self._speaker_volume = Audio.get_speaker_volume_static()
         return self._speaker_volume
             
@@ -278,24 +337,30 @@ class Audio:
         Raises:
             AudioError: If getting the volume fails
         """
+        # If we don't have the control file, return a default value
+        if not os.path.exists(Audio.SPEAKER_VOLUME_PATH):
+            return 0
+
         try:
             # Read from the system control file
             result = subprocess.run(
-                ["sudo", "cat", "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/volume_level"],
+                ["sudo", "cat", Audio.SPEAKER_VOLUME_PATH],
                 capture_output=True,
                 text=True,
                 check=False
             )
-            
+
             if result.returncode != 0:
-                raise AudioError(f"Failed to get speaker volume: {result.stderr}")
-                
+                print(f"Warning: Failed to get speaker volume: {result.stderr}")
+                return 0
+
             # Return the volume value
             return int(result.stdout.strip())
-            
+
         except Exception as e:
-            raise AudioError(f"Error getting speaker volume: {str(e)}")
-    
+            print(f"Warning: Error getting speaker volume: {str(e)}")
+            return 0
+
     def record(self, filepath: str, duration: Optional[float] = None) -> str:
         """
         Record audio to a file.

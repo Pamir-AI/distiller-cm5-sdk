@@ -17,8 +17,12 @@ logging.basicConfig(level=logging.INFO,
 
 class Whisper:
     def __init__(self, model_config=None, audio_config=None) -> None:
-        # override mic gain 
-        Audio.set_mic_gain_static(85)
+        # Try to set mic gain if hardware supports it
+        if Audio.has_audio_controls():
+            logging.info("Setting microphone gain for optimal speech recognition")
+            Audio.set_mic_gain_static(85)
+        else:
+            logging.info("Hardware volume controls not available - using system defaults")
 
         if audio_config is None:
             audio_config = dict()
