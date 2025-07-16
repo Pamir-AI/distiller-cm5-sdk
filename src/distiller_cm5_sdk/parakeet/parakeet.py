@@ -157,12 +157,23 @@ class Parakeet:
         if self._pyaudio is None:
             self._pyaudio = pyaudio.PyAudio()
             
+        # Check if any input devices are available
+        input_devices = []
+        for i in range(self._pyaudio.get_device_count()):
+            device_info = self._pyaudio.get_device_info_by_index(i)
+            if device_info["maxInputChannels"] > 0:
+                input_devices.append((i, device_info["name"]))
+                
+        if not input_devices:
+            raise Exception("No audio input devices found. Please ensure a microphone is connected.")
+            
+        logging.info(f"Found {len(input_devices)} input device(s): {[name for _, name in input_devices]}")
+            
         # If a specific device name was provided, find its index
         if isinstance(self.audio_config["device"], str):
             device_index = None
-            for i in range(self._pyaudio.get_device_count()):
-                device_info = self._pyaudio.get_device_info_by_index(i)
-                if self.audio_config["device"] in device_info["name"]:
+            for i, name in input_devices:
+                if self.audio_config["device"] in name:
                     device_index = i
                     break
             if device_index is None:
@@ -170,6 +181,15 @@ class Parakeet:
                 self.audio_config["device"] = None
             else:
                 self.audio_config["device"] = device_index
+                logging.info(f"Using specified device: {self.audio_config['device']}")
+        else:
+            # Use first available input device if no default is available
+            try:
+                default_info = self._pyaudio.get_default_input_device_info()
+                logging.info(f"Using default input device: {default_info['name']}")
+            except OSError:
+                self.audio_config["device"] = input_devices[0][0]
+                logging.info(f"No default device, using first available: {input_devices[0][1]}")
                 
     def _recording_thread(self):
         """Thread function for audio recording"""
@@ -357,29 +377,44 @@ class suppress_stdout_stderr(object):
 
 if __name__ == '__main__':
     # Example usage with auto push-to-talk
-    parakeet = Parakeet(vad_silence_duration=0.5)
-    print("=== Push-to-Talk Demo ===")
     try:
-        input("Press Enter to start recording...")
-        if not parakeet.start_recording():
-            exit()
+        parakeet = Parakeet(vad_silence_duration=0.5)
+        print("=== Push-to-Talk Demo ===")
+        try:
+            input("Press Enter to start recording...")
+            if not parakeet.start_recording():
+                print("Failed to start recording. Please check audio device availability.")
+                exit(1)
 
-        input("Recording... Press Enter to stop...")
-        audio_data = parakeet.stop_recording()
+            input("Recording... Press Enter to stop...")
+            audio_data = parakeet.stop_recording()
 
-        if audio_data:
-            # Save the recording
-            output_filename = "debug_recording.wav"
-            with open(output_filename, "wb") as f:
-                f.write(audio_data)
-            logging.info(f"Recording saved to {output_filename}")
-            print("Transcribing...")
-            for text in parakeet.transcribe_buffer(audio_data):
-                print(f"Transcribed: {text}")
-        else:
-            print("No audio recorded")
-    finally:
-        parakeet.cleanup()
+            if audio_data:
+                # Save the recording to /tmp for debugging (avoids permission issues)
+                import tempfile
+                try:
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                        output_filename = f.name
+                        f.write(audio_data)
+                    logging.info(f"Recording saved to {output_filename}")
+                except Exception as e:
+                    logging.warning(f"Could not save debug recording: {e}")
+                    
+                print("Transcribing...")
+                for text in parakeet.transcribe_buffer(audio_data):
+                    print(f"Transcribed: {text}")
+            else:
+                print("No audio recorded")
+        finally:
+            parakeet.cleanup()
+    except Exception as e:
+        logging.error(f"Failed to initialize Parakeet: {e}")
+        print("\nTroubleshooting:")
+        print("1. Ensure a microphone is connected and recognized by the system")
+        print("2. Check audio permissions: 'sudo usermod -a -G audio $USER'")
+        print("3. Test audio capture: 'arecord -l' should show capture devices")
+        print("4. Try running with sudo if permission issues persist")
+        exit(1)
         
     # for text in parakeet.auto_record_and_transcribe():
     #     print(f"Transcribed: {text}")
