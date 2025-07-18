@@ -102,7 +102,7 @@ class Parakeet:
                 decoder=os.path.join(self.model_config['model_path'],'decoder.onnx'),
                 tokens=os.path.join(self.model_config['model_path'],'tokens.txt'),
                 joiner=os.path.join(self.model_config['model_path'],'joiner.onnx'),
-                num_threads=4,
+                num_threads=1,
                 model_type="nemo_transducer"
             )
 
