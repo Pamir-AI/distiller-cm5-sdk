@@ -3,7 +3,6 @@ use std::os::raw::{c_char, c_int, c_uint};
 use std::ptr;
 
 use crate::display;
-use crate::firmware::DisplayFirmware;
 use crate::protocol::DisplayMode;
 use crate::config;
 use crate::image_processing::{ProcessingOptions, ScalingMethod, DitheringMethod};

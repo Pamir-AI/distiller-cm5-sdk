@@ -1,6 +1,6 @@
 use crate::error::DisplayError;
 use crate::firmware::DisplaySpec;
-use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, Rgb, RgbImage, GrayImage};
+use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, Rgb, GrayImage};
 use image::imageops::{self, FilterType};
 use std::path::Path;
 

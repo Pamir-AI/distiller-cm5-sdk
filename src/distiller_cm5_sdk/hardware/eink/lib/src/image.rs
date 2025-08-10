@@ -1,5 +1,5 @@
 use crate::error::DisplayError;
-use crate::firmware::{DisplayFirmware, DisplaySpec};
+use crate::firmware::DisplaySpec;
 use crate::config;
 
 pub fn convert_png_to_1bit_with_spec(

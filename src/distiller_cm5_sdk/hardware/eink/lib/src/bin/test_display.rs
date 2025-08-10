@@ -1,7 +1,7 @@
 #!/usr/bin/env rust-script
 
 use distiller_display_sdk_shared::{
-    config, FirmwareType, DisplayMode,
+    config, DisplayMode,
     display_init, display_image_raw, display_clear, display_sleep, display_cleanup,
     create_white_image, create_black_image, get_dimensions
 };
