@@ -8,7 +8,7 @@ import os
 import ctypes
 from ctypes import c_bool, c_char_p, c_uint32, POINTER
 from enum import IntEnum
-from typing import Optional, Tuple, Union, Dict, Any
+from typing import Optional, Tuple, Union, Dict, Any, List
 import tempfile
 from PIL import Image, ImageOps
 from functools import lru_cache
@@ -397,6 +397,29 @@ class Display:
         except AttributeError:
             # Configuration functions not available in this library version
             self._config_available = False
+        
+        # New image processing functions (optional - may not exist in older libraries)
+        try:
+            # process_image_auto(filename, output_data, scaling, dithering, rotate, flip, crop_x, crop_y) -> bool
+            self._lib.process_image_auto.restype = c_bool
+            self._lib.process_image_auto.argtypes = [
+                c_char_p, ctypes.POINTER(ctypes.c_ubyte),
+                ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                ctypes.c_int, ctypes.c_int
+            ]
+            
+            # is_image_format_supported(filename) -> bool
+            self._lib.is_image_format_supported.restype = c_bool
+            self._lib.is_image_format_supported.argtypes = [c_char_p]
+            
+            # get_supported_image_formats(formats, max_len) -> bool
+            self._lib.get_supported_image_formats.restype = c_bool
+            self._lib.get_supported_image_formats.argtypes = [ctypes.c_char_p, c_uint32]
+            
+            self._rust_processing_available = True
+        except AttributeError:
+            # Rust image processing not available
+            self._rust_processing_available = False
     
     def initialize(self) -> None:
         """
@@ -699,15 +722,85 @@ class Display:
             self.initialize()
         return self.WIDTH, self.HEIGHT
     
+    def _convert_image_rust(self, image_path: str, scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+                           dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+                           rotate: bool = False, flop: bool = False,
+                           crop_x: Optional[int] = None, crop_y: Optional[int] = None) -> bytes:
+        """
+        Convert image using Rust processing (faster, supports more formats).
+        
+        Returns:
+            Raw 1-bit packed image data
+        """
+        if not os.path.exists(image_path):
+            raise DisplayError(f"Image file not found: {image_path}")
+        
+        # Create output buffer
+        output_data = (ctypes.c_ubyte * self.ARRAY_SIZE)()
+        filename_bytes = image_path.encode('utf-8')
+        
+        # Convert None to -1 for crop coordinates
+        crop_x_val = -1 if crop_x is None else crop_x
+        crop_y_val = -1 if crop_y is None else crop_y
+        
+        success = self._lib.process_image_auto(
+            filename_bytes, output_data,
+            int(scaling), int(dithering),
+            int(rotate), int(flop),
+            crop_x_val, crop_y_val
+        )
+        
+        if not success:
+            raise DisplayError(f"Failed to process image: {image_path}")
+        
+        return bytes(output_data)
+    
+    def is_format_supported(self, image_path: str) -> bool:
+        """
+        Check if an image format is supported.
+        
+        Args:
+            image_path: Path to image file
+            
+        Returns:
+            True if format is supported
+        """
+        if not hasattr(self, '_rust_processing_available') or not self._rust_processing_available:
+            # Fallback to PNG only
+            return image_path.lower().endswith('.png')
+        
+        filename_bytes = image_path.encode('utf-8')
+        return bool(self._lib.is_image_format_supported(filename_bytes))
+    
+    def get_supported_formats(self) -> List[str]:
+        """
+        Get list of supported image formats.
+        
+        Returns:
+            List of supported file extensions
+        """
+        if not hasattr(self, '_rust_processing_available') or not self._rust_processing_available:
+            return ['png']
+        
+        buffer = ctypes.create_string_buffer(256)
+        success = self._lib.get_supported_image_formats(buffer, 256)
+        
+        if success:
+            formats_str = buffer.value.decode('utf-8')
+            return formats_str.split(',')
+        
+        return ['png']
+    
     def _convert_png_auto(self, image_path: str, scaling: ScalingMethod = ScalingMethod.LETTERBOX, 
                          dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
                          rotate: bool = False, flop: bool = False,
                          crop_x: Optional[int] = None, crop_y: Optional[int] = None) -> str:
         """
-        Convert any PNG to display-compatible format with caching support.
+        Convert any image to display-compatible format with caching support.
+        Now supports multiple image formats via Rust processing.
         
         Args:
-            image_path: Path to source PNG file
+            image_path: Path to source image file (PNG, JPEG, BMP, TIFF, WebP, etc.)
             scaling: How to scale the image to fit display
             dithering: Dithering method for 1-bit conversion
             rotate: If True, rotate image 90 degrees counter-clockwise
@@ -722,7 +815,7 @@ class Display:
             DisplayError: If conversion fails
         """
         if not os.path.exists(image_path):
-            raise DisplayError(f"PNG file not found: {image_path}")
+            raise DisplayError(f"Image file not found: {image_path}")
         
         # Get display dimensions
         display_width, display_height = self._get_display_dimensions()
@@ -735,6 +828,57 @@ class Display:
             )
             if cached_path:
                 return cached_path
+        
+        # Try Rust processing first if available (faster and supports more formats)
+        if hasattr(self, '_rust_processing_available') and self._rust_processing_available:
+            try:
+                # Get raw data from Rust processing
+                raw_data = self._convert_image_rust(
+                    image_path, scaling, dithering, rotate, flop, crop_x, crop_y
+                )
+                
+                # Save to temporary PNG file
+                temp_fd, temp_path = tempfile.mkstemp(suffix='.png', prefix='eink_auto_')
+                try:
+                    os.close(temp_fd)
+                    
+                    # Convert raw data to PIL Image for saving as PNG
+                    img_array = []
+                    for byte_idx in range(len(raw_data)):
+                        byte_val = raw_data[byte_idx]
+                        for bit_idx in range(8):
+                            bit = (byte_val >> (7 - bit_idx)) & 1
+                            img_array.append(255 if bit else 0)
+                    
+                    # Trim to exact size
+                    img_array = img_array[:display_width * display_height]
+                    
+                    # Create PIL image from array
+                    img = Image.new('L', (display_width, display_height))
+                    img.putdata(img_array)
+                    img = img.convert('1')
+                    img.save(temp_path, 'PNG')
+                    
+                    # Store in cache
+                    if Display._cache_manager:
+                        Display._cache_manager.put(
+                            image_path, display_width, display_height,
+                            int(scaling), int(dithering), rotate, flop, crop_x, crop_y,
+                            temp_path
+                        )
+                    
+                    return temp_path
+                    
+                except Exception as e:
+                    try:
+                        os.unlink(temp_path)
+                    except:
+                        pass
+                    raise DisplayError(f"Failed to save converted image: {e}")
+                    
+            except Exception as rust_error:
+                # Fall back to PIL processing
+                print(f"Rust processing failed, falling back to PIL: {rust_error}")
         
         try:
             # Load and process the image
@@ -861,10 +1005,11 @@ class Display:
                         crop_x: Optional[int] = None, crop_y: Optional[int] = None,
                         cleanup_temp: bool = True) -> bool:
         """
-        Display any PNG image with automatic conversion to display specifications.
+        Display any image with automatic conversion to display specifications.
+        Supports multiple formats: PNG, JPEG, GIF, BMP, TIFF, WebP, ICO, PNM, TGA, DDS
         
         Args:
-            image_path: Path to source PNG file
+            image_path: Path to source image file (any supported format)
             mode: Display refresh mode
             scaling: How to scale the image to fit display
             dithering: Dithering method for 1-bit conversion
@@ -890,15 +1035,27 @@ class Display:
             return True
             
         except Exception as e:
-            raise DisplayError(f"Failed to auto-display PNG: {e}")
+            raise DisplayError(f"Failed to auto-display image: {e}")
             
         finally:
-            # Cleanup temporary file
+            # Cleanup temporary file (only if not cached)
             if cleanup_temp and temp_path and os.path.exists(temp_path):
-                try:
-                    os.unlink(temp_path)
-                except:
-                    pass  # Ignore cleanup errors
+                # Don't delete if it's in cache
+                if not Display._cache_manager or temp_path not in Display._cache_manager._temp_files.values():
+                    try:
+                        os.unlink(temp_path)
+                    except:
+                        pass  # Ignore cleanup errors
+    
+    def display_image_auto(self, image_path: str, mode: DisplayMode = DisplayMode.FULL,
+                          scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+                          dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+                          rotate: bool = False, flop: bool = False,
+                          crop_x: Optional[int] = None, crop_y: Optional[int] = None) -> bool:
+        """
+        Alias for display_png_auto that better reflects multi-format support.
+        """
+        return self.display_png_auto(image_path, mode, scaling, dithering, rotate, flop, crop_x, crop_y)
 
 
 # Convenience functions for simple usage (following SDK pattern)
@@ -937,6 +1094,29 @@ def display_png_auto(filename: str, mode: DisplayMode = DisplayMode.FULL,
     
     Args:
         filename: Path to PNG file (any size, any format)
+        mode: Display refresh mode
+        scaling: How to scale the image to fit display
+        dithering: Dithering method for 1-bit conversion
+        rotate: If True, rotate image 90 degrees counter-clockwise
+        flop: If True, flip image horizontally (left-right mirror)
+        crop_x: X position for crop when using CROP_CENTER (None = center)
+        crop_y: Y position for crop when using CROP_CENTER (None = center)
+    """
+    with Display() as display:
+        display.display_png_auto(filename, mode, scaling, dithering, rotate, flop, crop_x, crop_y)
+
+
+def display_image_auto(filename: str, mode: DisplayMode = DisplayMode.FULL,
+                       scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+                       dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+                       rotate: bool = False, flop: bool = False,
+                       crop_x: Optional[int] = None, crop_y: Optional[int] = None) -> None:
+    """
+    Display any supported image format with automatic conversion.
+    Supports: PNG, JPEG, GIF, BMP, TIFF, WebP, ICO, PNM, TGA, DDS
+    
+    Args:
+        filename: Path to image file (any supported format)
         mode: Display refresh mode
         scaling: How to scale the image to fit display
         dithering: Dithering method for 1-bit conversion
