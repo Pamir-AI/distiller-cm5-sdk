@@ -1,3 +1,24 @@
+distiller-cm5-sdk (0.2.0-1) unstable; urgency=medium
+
+  * feat(eink): Add image caching system for converted images
+    - Implement ImageCacheManager with LRU eviction policy
+    - Support persistent cache storage between sessions
+    - Add cache management methods: clear_cache() and get_cache_stats()
+  * perf(eink): Implement Rust-based image processing for better performance
+    - Add image crate with support for multiple formats
+    - Implement native Floyd-Steinberg dithering in Rust
+    - Achieve 2-3x faster processing than PIL
+  * feat(eink): Add support for multiple image formats (TIFF, BMP, JPEG, WebP)
+    - Support 10+ formats: PNG, JPEG, GIF, BMP, TIFF, WebP, ICO, PNM, TGA, DDS
+    - Add display_image_auto() convenience function for any format
+    - Implement format detection and validation methods
+  * docs: Update READMEs with new e-ink features and examples
+    - Document multi-format support and performance improvements
+    - Add migration guide for upgrading from v0.1.0
+    - Include cache management documentation
+
+ -- PamirAI Incorporated <founders@pamir.ai>  Sun, 10 Aug 2025 12:00:00 +0530
+
 distiller-cm5-sdk (0.1.0-1) unstable; urgency=medium
 
   [ utsavbalar1231 ]

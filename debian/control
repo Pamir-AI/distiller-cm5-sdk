@@ -35,6 +35,8 @@ Description: Distiller CM5 SDK - Self-contained Python SDK for hardware control
   * Python 3.11 virtual environment managed by uv
   * Python modules (distiller_cm5_sdk)
   * Model files for Whisper, Parakeet, Piper
-  * Native shared library for e-ink display
+  * Enhanced e-ink display library with Rust-based image processing
+  * Multi-format image support (JPEG, BMP, TIFF, WebP, PNG, GIF, ICO, etc.)
+  * Intelligent image caching with LRU eviction and persistence
   * All dependencies for hardware access and audio/video processing
   * uv package manager for Python dependency management 
