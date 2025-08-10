@@ -8,9 +8,15 @@ import os
 import ctypes
 from ctypes import c_bool, c_char_p, c_uint32, POINTER
 from enum import IntEnum
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict, Any
 import tempfile
 from PIL import Image, ImageOps
+from functools import lru_cache
+import hashlib
+import json
+import atexit
+import pickle
+from pathlib import Path
 
 
 class DisplayError(Exception):
@@ -43,6 +49,203 @@ class DitheringMethod(IntEnum):
     SIMPLE = 1           # Fast threshold conversion
 
 
+class ImageCacheManager:
+    """
+    Manages caching of converted images to avoid repeated processing.
+    Uses LRU cache with file-based persistence option.
+    """
+    
+    def __init__(self, max_size: int = 100, persist_path: Optional[str] = None):
+        """
+        Initialize the image cache manager.
+        
+        Args:
+            max_size: Maximum number of cached entries
+            persist_path: Optional path to persist cache between sessions
+        """
+        self.max_size = max_size
+        self.persist_path = persist_path
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._temp_files: Dict[str, str] = {}  # Track temp files for cleanup
+        
+        # Load persisted cache if available
+        if persist_path and os.path.exists(persist_path):
+            try:
+                with open(persist_path, 'rb') as f:
+                    saved_cache = pickle.load(f)
+                    # Validate that cached files still exist
+                    for key, entry in saved_cache.items():
+                        if 'temp_path' in entry and os.path.exists(entry['temp_path']):
+                            self._cache[key] = entry
+                            self._temp_files[key] = entry['temp_path']
+            except Exception as e:
+                print(f"Warning: Could not load cache from {persist_path}: {e}")
+        
+        # Register cleanup on exit
+        atexit.register(self.cleanup)
+    
+    def _generate_cache_key(self, image_path: str, display_width: int, display_height: int,
+                           scaling: int, dithering: int, rotate: bool, flop: bool,
+                           crop_x: Optional[int], crop_y: Optional[int]) -> str:
+        """Generate a unique cache key for the conversion parameters."""
+        # Get file modification time for cache invalidation
+        try:
+            mtime = os.path.getmtime(image_path)
+        except:
+            mtime = 0
+        
+        # Create a unique key from all parameters
+        key_data = {
+            'path': image_path,
+            'mtime': mtime,
+            'width': display_width,
+            'height': display_height,
+            'scaling': scaling,
+            'dithering': dithering,
+            'rotate': rotate,
+            'flop': flop,
+            'crop_x': crop_x,
+            'crop_y': crop_y
+        }
+        
+        # Generate hash of the key data
+        key_str = json.dumps(key_data, sort_keys=True)
+        return hashlib.sha256(key_str.encode()).hexdigest()
+    
+    def get(self, image_path: str, display_width: int, display_height: int,
+            scaling: int, dithering: int, rotate: bool, flop: bool,
+            crop_x: Optional[int], crop_y: Optional[int]) -> Optional[str]:
+        """
+        Get cached converted image path if available.
+        
+        Returns:
+            Path to cached temporary file, or None if not cached
+        """
+        key = self._generate_cache_key(image_path, display_width, display_height,
+                                      scaling, dithering, rotate, flop, crop_x, crop_y)
+        
+        if key in self._cache:
+            entry = self._cache[key]
+            # Verify the temp file still exists
+            if os.path.exists(entry['temp_path']):
+                # Move to end (most recently used)
+                self._cache.pop(key)
+                self._cache[key] = entry
+                return entry['temp_path']
+            else:
+                # Clean up invalid entry
+                self._cache.pop(key, None)
+                self._temp_files.pop(key, None)
+        
+        return None
+    
+    def put(self, image_path: str, display_width: int, display_height: int,
+            scaling: int, dithering: int, rotate: bool, flop: bool,
+            crop_x: Optional[int], crop_y: Optional[int], temp_path: str) -> None:
+        """
+        Store converted image in cache.
+        
+        Args:
+            temp_path: Path to the converted temporary file
+        """
+        key = self._generate_cache_key(image_path, display_width, display_height,
+                                      scaling, dithering, rotate, flop, crop_x, crop_y)
+        
+        # Enforce max size (remove oldest entries)
+        while len(self._cache) >= self.max_size:
+            # Remove oldest (first) entry
+            oldest_key = next(iter(self._cache))
+            self._remove_entry(oldest_key)
+        
+        # Add new entry
+        self._cache[key] = {
+            'temp_path': temp_path,
+            'source_path': image_path,
+            'params': {
+                'width': display_width,
+                'height': display_height,
+                'scaling': scaling,
+                'dithering': dithering,
+                'rotate': rotate,
+                'flop': flop,
+                'crop_x': crop_x,
+                'crop_y': crop_y
+            }
+        }
+        self._temp_files[key] = temp_path
+        
+        # Persist cache if configured
+        self._persist()
+    
+    def _remove_entry(self, key: str) -> None:
+        """Remove a cache entry and clean up its temp file."""
+        entry = self._cache.pop(key, None)
+        temp_path = self._temp_files.pop(key, None)
+        
+        # Clean up temp file if it exists and is not used elsewhere
+        if temp_path and temp_path not in self._temp_files.values():
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+    
+    def clear(self) -> None:
+        """Clear all cached entries and clean up temp files."""
+        for key in list(self._cache.keys()):
+            self._remove_entry(key)
+        
+        self._cache.clear()
+        self._temp_files.clear()
+        
+        # Clear persisted cache
+        if self.persist_path and os.path.exists(self.persist_path):
+            try:
+                os.unlink(self.persist_path)
+            except:
+                pass
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics."""
+        total_size = 0
+        for temp_path in set(self._temp_files.values()):
+            try:
+                total_size += os.path.getsize(temp_path)
+            except:
+                pass
+        
+        return {
+            'entries': len(self._cache),
+            'max_size': self.max_size,
+            'total_bytes': total_size,
+            'persist_enabled': self.persist_path is not None
+        }
+    
+    def _persist(self) -> None:
+        """Persist cache to disk if configured."""
+        if not self.persist_path:
+            return
+        
+        try:
+            # Create directory if needed
+            os.makedirs(os.path.dirname(self.persist_path), exist_ok=True)
+            
+            # Save cache
+            with open(self.persist_path, 'wb') as f:
+                pickle.dump(self._cache, f)
+        except Exception as e:
+            print(f"Warning: Could not persist cache to {self.persist_path}: {e}")
+    
+    def cleanup(self) -> None:
+        """Cleanup temp files on exit."""
+        # Only cleanup files that are not persisted
+        if not self.persist_path:
+            for temp_path in set(self._temp_files.values()):
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+
+
 class Display:
     """
     Display class for interacting with the CM5 e-ink display system.
@@ -53,6 +256,7 @@ class Display:
     - Clear the display
     - Control display refresh modes
     - Manage display power states
+    - Cache converted images for improved performance
     """
     
     # Display constants (will be updated dynamically)
@@ -60,19 +264,39 @@ class Display:
     HEIGHT = 250  # Default, will be updated after initialization
     ARRAY_SIZE = (128 * 250) // 8  # Default, will be updated after initialization
     
-    def __init__(self, library_path: Optional[str] = None, auto_init: bool = True):
+    # Shared cache manager across all Display instances
+    _cache_manager: Optional[ImageCacheManager] = None
+    
+    def __init__(self, library_path: Optional[str] = None, auto_init: bool = True, 
+                 enable_cache: bool = True, cache_size: int = 100, 
+                 cache_persist_path: Optional[str] = None):
         """
         Initialize the Display object.
         
         Args:
             library_path: Optional path to the shared library. If None, searches common locations.
             auto_init: Whether to automatically initialize the display hardware
+            enable_cache: Whether to enable image caching
+            cache_size: Maximum number of cached entries
+            cache_persist_path: Optional path to persist cache between sessions
         
         Raises:
             DisplayError: If library can't be loaded or display can't be initialized
         """
         self._lib = None
         self._initialized = False
+        
+        # Initialize cache manager if enabled
+        if enable_cache and Display._cache_manager is None:
+            # Default persist path if not specified
+            if cache_persist_path is None and enable_cache:
+                cache_dir = os.path.expanduser("~/.cache/distiller_eink")
+                cache_persist_path = os.path.join(cache_dir, "image_cache.pkl")
+            
+            Display._cache_manager = ImageCacheManager(
+                max_size=cache_size,
+                persist_path=cache_persist_path
+            )
         
         # Find and load the shared library
         if library_path is None:
@@ -456,6 +680,19 @@ class Display:
         """Context manager exit."""
         self.close()
     
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Clear the image conversion cache."""
+        if cls._cache_manager:
+            cls._cache_manager.clear()
+    
+    @classmethod
+    def get_cache_stats(cls) -> Dict[str, Any]:
+        """Get cache statistics."""
+        if cls._cache_manager:
+            return cls._cache_manager.get_stats()
+        return {'entries': 0, 'max_size': 0, 'total_bytes': 0, 'persist_enabled': False}
+    
     def _get_display_dimensions(self) -> Tuple[int, int]:
         """Get current display dimensions."""
         if not self._initialized:
@@ -467,7 +704,7 @@ class Display:
                          rotate: bool = False, flop: bool = False,
                          crop_x: Optional[int] = None, crop_y: Optional[int] = None) -> str:
         """
-        Convert any PNG to display-compatible format.
+        Convert any PNG to display-compatible format with caching support.
         
         Args:
             image_path: Path to source PNG file
@@ -489,6 +726,15 @@ class Display:
         
         # Get display dimensions
         display_width, display_height = self._get_display_dimensions()
+        
+        # Check cache first
+        if Display._cache_manager:
+            cached_path = Display._cache_manager.get(
+                image_path, display_width, display_height,
+                int(scaling), int(dithering), rotate, flop, crop_x, crop_y
+            )
+            if cached_path:
+                return cached_path
         
         try:
             # Load and process the image
@@ -517,6 +763,15 @@ class Display:
                 try:
                     os.close(temp_fd)
                     bw_img.save(temp_path, 'PNG')
+                    
+                    # Store in cache
+                    if Display._cache_manager:
+                        Display._cache_manager.put(
+                            image_path, display_width, display_height,
+                            int(scaling), int(dithering), rotate, flop, crop_x, crop_y,
+                            temp_path
+                        )
+                    
                     return temp_path
                 except Exception as e:
                     try:
