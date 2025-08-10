@@ -6,6 +6,7 @@ use crate::display;
 use crate::firmware::DisplayFirmware;
 use crate::protocol::DisplayMode;
 use crate::config;
+use crate::image_processing::{ProcessingOptions, ScalingMethod, DitheringMethod};
 
 // C FFI exports
 #[unsafe(no_mangle)]
@@ -208,5 +209,113 @@ pub extern "C" fn display_initialize_config() -> c_int {
             0
         }
     }
+}
+
+// New image processing FFI functions
+#[unsafe(no_mangle)]
+pub extern "C" fn process_image_auto(
+    filename: *const c_char,
+    output_data: *mut u8,
+    scaling: c_int,
+    dithering: c_int,
+    rotate: c_int,
+    flip: c_int,
+    crop_x: c_int,
+    crop_y: c_int,
+) -> c_int {
+    if filename.is_null() || output_data.is_null() {
+        return 0;
+    }
+
+    let filename_str = unsafe {
+        match CStr::from_ptr(filename).to_str() {
+            Ok(s) => s,
+            Err(_) => return 0,
+        }
+    };
+
+    // Get display spec
+    let spec = match config::get_default_spec() {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Failed to get display spec: {}", e);
+            return 0;
+        }
+    };
+
+    // Build processing options
+    let options = ProcessingOptions {
+        scaling: match scaling {
+            0 => ScalingMethod::Letterbox,
+            1 => ScalingMethod::CropCenter,
+            2 => ScalingMethod::Stretch,
+            _ => ScalingMethod::Letterbox,
+        },
+        dithering: match dithering {
+            0 => DitheringMethod::FloydSteinberg,
+            1 => DitheringMethod::Simple,
+            _ => DitheringMethod::FloydSteinberg,
+        },
+        rotate: rotate != 0,
+        flip: flip != 0,
+        crop_x: if crop_x < 0 { None } else { Some(crop_x as u32) },
+        crop_y: if crop_y < 0 { None } else { Some(crop_y as u32) },
+    };
+
+    // Process the image
+    match crate::image_processing::process_image_file(filename_str, &spec, &options) {
+        Ok(data) => {
+            unsafe {
+                ptr::copy_nonoverlapping(data.as_ptr(), output_data, spec.array_size());
+            }
+            1
+        }
+        Err(e) => {
+            log::error!("Image processing failed: {}", e);
+            0
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn is_image_format_supported(filename: *const c_char) -> c_int {
+    if filename.is_null() {
+        return 0;
+    }
+
+    let filename_str = unsafe {
+        match CStr::from_ptr(filename).to_str() {
+            Ok(s) => s,
+            Err(_) => return 0,
+        }
+    };
+
+    if crate::image_processing::is_format_supported(filename_str) {
+        1
+    } else {
+        0
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn get_supported_image_formats(formats: *mut c_char, max_len: c_uint) -> c_int {
+    if formats.is_null() || max_len == 0 {
+        return 0;
+    }
+
+    let extensions = crate::image_processing::get_supported_extensions();
+    let formats_str = extensions.join(",");
+    let formats_bytes = formats_str.as_bytes();
+
+    if formats_bytes.len() + 1 > max_len as usize {
+        return 0; // Buffer too small
+    }
+
+    unsafe {
+        ptr::copy_nonoverlapping(formats_bytes.as_ptr(), formats as *mut u8, formats_bytes.len());
+        *formats.add(formats_bytes.len()) = 0; // Null terminator
+    }
+
+    1
 }
 

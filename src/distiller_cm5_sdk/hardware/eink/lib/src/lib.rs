@@ -5,6 +5,7 @@ pub mod ffi;
 pub mod firmware;
 pub mod hardware;
 pub mod image;
+pub mod image_processing;
 pub mod protocol;
 
 // Re-export public API
