@@ -397,13 +397,15 @@ if __name__ == "__main__":
 
 ### E-ink Display Control
 
-The e-ink display system features high-performance image processing with multi-format support, intelligent caching, and configurable firmware for different display sizes. The system automatically converts and optimizes images from 10+ formats.
+The e-ink display system features high-performance image processing with multi-format support, intelligent caching, and configurable firmware for different display sizes. The system automatically converts and optimizes images from 10+ formats with native Rust processing.
 
-#### 🎉 New Features (v0.2.0)
-- **Universal Format Support**: Display JPEG, BMP, TIFF, WebP, GIF, PNG, ICO, PNM, TGA, DDS
+#### New Features (v0.2.0)
+- **Universal Format Support**: Display JPEG, BMP, TIFF, WebP, GIF, PNG, ICO, PNM, TGA, DDS directly
 - **Image Caching**: LRU cache with persistence reduces repeated conversions by 90%+
-- **Rust Processing**: Native performance - 2-3x faster than PIL
-- **Backward Compatible**: All existing code continues to work
+- **Rust Processing**: Native performance - 2-3x faster than PIL-based processing
+- **Smart Scaling**: Multiple algorithms (letterbox, crop, stretch) with aspect ratio preservation
+- **Advanced Dithering**: Floyd-Steinberg and simple threshold for optimal 1-bit conversion
+- **Backward Compatible**: All existing code continues to work unchanged
 
 #### Supported Display Types
 - **EPD128x250**: 128x250 pixel display (4,000 bytes, default for backward compatibility)
@@ -485,26 +487,70 @@ def eink_configuration_example():
         print(f"Error configuring display: {e}")
 
 def eink_multi_format_example():
-    """Display various image formats with caching"""
-    # Quick display of any format
-    display_image_auto("photo.jpg")       # JPEG
-    display_image_auto("document.tiff")   # TIFF
-    display_image_auto("graphic.bmp")     # BMP
-    display_image_auto("modern.webp")     # WebP
+    """Display various image formats with automatic conversion and caching"""
+    from distiller_cm5_sdk.hardware.eink import (
+        display_image_auto, Display, ScalingMethod, DitheringMethod
+    )
+    
+    # Quick display of any format - automatically converted and cached
+    display_image_auto("photo.jpg")       # JPEG with auto-scaling
+    display_image_auto("document.tiff")   # TIFF support
+    display_image_auto("graphic.bmp")     # BMP format
+    display_image_auto("modern.webp")     # WebP (modern format)
+    
+    # Advanced options for image display
+    display_image_auto(
+        "wide_banner.png",
+        scaling=ScalingMethod.CROP_CENTER,  # Fill display, crop excess
+        dithering=DitheringMethod.FLOYD_STEINBERG  # High quality dithering
+    )
     
     # With Display class for more control
     with Display() as display:
         # Check supported formats
         formats = display.get_supported_formats()
-        print(f"Supported: {', '.join(formats)}")
+        print(f"Supported formats: {', '.join(formats)}")
         
-        # Display with caching (second call is instant)
-        display.display_image_auto("logo.png")
-        display.display_image_auto("logo.png")  # Uses cache!
+        # Display with format checking
+        if display.is_format_supported("image.webp"):
+            display.display_image_auto("image.webp")
         
-        # Check cache stats
+        # Cache management
         stats = Display.get_cache_stats()
-        print(f"Cached: {stats['entries']} images")
+        print(f"Cached images: {stats['entries']}/{stats['max_size']}")
+        print(f"Cache size: {stats['total_bytes']} bytes")
+        
+        # Pre-cache frequently used images for instant display
+        for img in ['logo.png', 'menu.jpg', 'background.bmp']:
+            display.display_image_auto(img)  # Processed once, cached for reuse
+
+def eink_performance_example():
+    """Demonstrate performance improvements with caching"""
+    from distiller_cm5_sdk.hardware.eink import Display
+    import time
+    
+    display = Display(
+        enable_cache=True,      # Enable caching (default)
+        cache_size=200,         # Increase cache size
+        cache_persist_path="/tmp/eink_cache.pkl"  # Custom cache location
+    )
+    
+    # First display - processes image
+    start = time.time()
+    display.display_image_auto("large_photo.jpg")
+    first_time = time.time() - start
+    print(f"First display: {first_time:.2f}s (processing + display)")
+    
+    # Second display - uses cache
+    start = time.time()
+    display.display_image_auto("large_photo.jpg")
+    cached_time = time.time() - start
+    print(f"Cached display: {cached_time:.2f}s (cache hit)")
+    print(f"Speed improvement: {first_time/cached_time:.1f}x faster")
+    
+    # Check cache stats
+    stats = Display.get_cache_stats()
+    print(f"Cached: {stats['entries']} images")
 
 def eink_display_example():
     """E-ink display control with auto-conversion"""
@@ -1025,9 +1071,9 @@ python -c "
 from distiller_cm5_sdk.hardware.eink import get_default_firmware, initialize_display_config
 try:
     initialize_display_config()
-    print(f'✓ Current firmware: {get_default_firmware()}')
+    print(f'[OK] Current firmware: {get_default_firmware()}')
 except Exception as e:
-    print(f'✗ Configuration error: {e}')
+    print(f'[ERROR] Configuration error: {e}')
 "
 
 # Verify configuration sources
@@ -1100,25 +1146,25 @@ import traceback
 
 try:
     import distiller_cm5_sdk
-    print('✓ Base SDK import successful')
+    print('[OK] Base SDK import successful')
     
     from distiller_cm5_sdk.parakeet import Parakeet
-    print('✓ Parakeet import successful')
+    print('[OK] Parakeet import successful')
     
     from distiller_cm5_sdk.piper import Piper
-    print('✓ Piper import successful')
+    print('[OK] Piper import successful')
     
     from distiller_cm5_sdk.hardware.audio import Audio
-    print('✓ Audio hardware import successful')
+    print('[OK] Audio hardware import successful')
     
     from distiller_cm5_sdk.hardware.camera import Camera
-    print('✓ Camera hardware import successful')
+    print('[OK] Camera hardware import successful')
     
     from distiller_cm5_sdk.hardware.eink import Display, display_image_auto
-    print('✓ E-ink display import successful')
+    print('[OK] E-ink display import successful')
     
     from distiller_cm5_sdk.hardware.sam import LED
-    print('✓ LED hardware import successful')
+    print('[OK] LED hardware import successful')
     
     print('All imports successful!')
     

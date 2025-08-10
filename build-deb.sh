@@ -56,7 +56,6 @@ check_command() {
 
 echo "[INFO] Checking build dependencies..."
 check_command "dpkg-buildpackage"
-check_command "debuild"
 
 # Clean previous builds if requested
 if [ "$CLEAN_BUILD" = true ]; then

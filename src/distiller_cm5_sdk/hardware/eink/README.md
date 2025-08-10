@@ -461,6 +461,136 @@ from distiller_cm5_sdk.hardware.eink._display_test import run_display_tests
 run_display_tests()
 ```
 
+## Migration Guide (v0.1.0 → v0.2.0)
+
+### What's Changed
+- **Multi-format support**: Now supports 10+ image formats (JPEG, BMP, TIFF, WebP, etc.)
+- **Image caching**: Automatic caching with LRU eviction and persistent storage
+- **Rust processing**: 2-3x faster image processing with native Rust implementation
+- **New APIs**: `display_image_auto()` for any format, cache management methods
+
+### Backward Compatibility
+All existing code continues to work without changes:
+```python
+# These still work exactly as before
+display_png("image.png")
+display_png_auto("image.png")
+Display().display_image("image.png")
+```
+
+### Recommended Updates
+For best performance and features, update to new APIs:
+```python
+# Old way (still works)
+display_png_auto("photo.png")
+
+# New way (supports all formats, uses cache)
+display_image_auto("photo.jpg")  # Works with JPEG, BMP, TIFF, etc.
+```
+
+### Cache Configuration
+```python
+# Default configuration (works for most users)
+display = Display()  # Cache enabled by default
+
+# Custom cache configuration
+display = Display(
+    enable_cache=True,
+    cache_size=200,  # Increase for more cached images
+    cache_persist_path="/custom/cache.pkl"
+)
+
+# Disable cache if needed
+display = Display(enable_cache=False)
+```
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### 1. Cache Permission Errors
+**Problem**: "Permission denied" when writing cache files
+```
+DisplayError: Could not persist cache to ~/.cache/distiller_eink/image_cache.pkl
+```
+
+**Solution**: Ensure write permissions for cache directory
+```bash
+mkdir -p ~/.cache/distiller_eink
+chmod 755 ~/.cache/distiller_eink
+```
+
+#### 2. Format Not Supported
+**Problem**: Image format not recognized
+```python
+# Check if format is supported
+display = Display()
+if display.is_format_supported("image.heic"):
+    display.display_image_auto("image.heic")
+else:
+    print("Format not supported. Convert to supported format first.")
+    print(f"Supported formats: {display.get_supported_formats()}")
+```
+
+#### 3. Rust Processing Not Available
+**Problem**: Rust processing functions not found
+```
+Warning: Rust processing failed, falling back to PIL
+```
+
+**Solution**: This is normal on older installations. The system automatically falls back to PIL processing. To enable Rust processing:
+```bash
+# Reinstall the package with latest version
+sudo dpkg -i distiller-cm5-sdk_0.2.0_arm64.deb
+```
+
+#### 4. Memory Issues with Large Images
+**Problem**: Out of memory with very large images
+
+**Solution**: Use simple dithering and clear cache periodically
+```python
+# Use simple dithering for large images
+display_image_auto("huge_photo.jpg", dithering=DitheringMethod.SIMPLE)
+
+# Clear cache to free memory
+Display.clear_cache()
+```
+
+#### 5. Cache Not Persisting
+**Problem**: Cache resets after reboot
+
+**Solution**: Check cache persistence is enabled
+```python
+stats = Display.get_cache_stats()
+if not stats['persist_enabled']:
+    # Cache persistence is disabled, enable it
+    display = Display(cache_persist_path="~/.cache/distiller_eink/cache.pkl")
+```
+
+#### 6. Slow First Display
+**Problem**: First image display is slow, subsequent displays are fast
+
+**Solution**: This is normal - first display processes and caches the image
+```python
+# Pre-cache frequently used images during initialization
+display = Display()
+for image in ['logo.png', 'menu.jpg', 'background.bmp']:
+    display.display_image_auto(image)  # Pre-process and cache
+```
+
+#### 7. GPIO Access Denied
+**Problem**: "Permission denied" for GPIO operations
+
+**Solution**: Run with appropriate permissions
+```bash
+# Option 1: Add user to gpio group
+sudo usermod -a -G gpio $USER
+# Logout and login again
+
+# Option 2: Run with sudo (not recommended for production)
+sudo python your_script.py
+```
+
 ## Notes
 
 - **Auto-conversion is recommended** for most use cases - no need to manually resize images
@@ -470,3 +600,4 @@ run_display_tests()
 - Full refresh mode provides the cleanest image quality
 - **Backward compatibility**: All existing code continues to work unchanged
 - **Multi-display support**: Automatically detects and adapts to your display type
+- **Cache cleanup**: Temporary files are automatically cleaned on exit unless persistence is enabled
