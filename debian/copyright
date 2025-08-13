@@ -1,13 +1,14 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: distiller-cm5-sdk
+Upstream-Contact: PamirAI Incorporated. <support@pamir.ai>
 Source: https://github.com/Pamir-AI/distiller-cm5-sdk
 
 Files: *
-Copyright: 2025 PamirAI Incorporated <founders@pamir.ai>
+Copyright: 2025 PamirAI Incorporated.
 License: MIT
 
-Files: src/distiller_cm5_sdk/hardware/eink/lib/*
-Copyright: 2025 PamirAI Incorporated <founders@pamir.ai>
+Files: debian/*
+Copyright: 2025 PamirAI Incorporated.
 License: MIT
 
 License: MIT

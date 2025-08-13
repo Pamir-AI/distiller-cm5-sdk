@@ -1,7 +1,7 @@
 Source: distiller-cm5-sdk
 Section: python
 Priority: optional
-Maintainer: PamirAI Incorporated <founders@pamir.ai>
+Maintainer: PamirAI Incorporated <support@pamir.ai>
 Build-Depends: debhelper-compat (= 13),
                dh-python,
                python3-setuptools,
@@ -9,6 +9,8 @@ Build-Depends: debhelper-compat (= 13),
                ca-certificates,
 Standards-Version: 4.6.2
 Homepage: https://github.com/Pamir-AI/distiller-cm5-sdk
+Vcs-Git: https://github.com/Pamir-AI/distiller-cm5-sdk.git
+Vcs-Browser: https://github.com/Pamir-AI/distiller-cm5-sdk
 Rules-Requires-Root: no
 
 Package: distiller-cm5-sdk
@@ -26,17 +28,8 @@ Depends: ${misc:Depends},
          libasound2-dev,
          build-essential,
          pkgconf
-Description: Distiller CM5 SDK - Self-contained Python SDK for hardware control
- The Distiller CM5 SDK provides a self-contained Python environment with modules,
- model files, and native libraries for audio, camera, e-ink display, and TTS/ASR
- on the CM5 platform.
- .
- This package installs to /opt/distiller-cm5-sdk and includes:
-  * Python 3.11 virtual environment managed by uv
-  * Python modules (distiller_cm5_sdk)
-  * Model files for Whisper, Parakeet, Piper
-  * Enhanced e-ink display library with Rust-based image processing
-  * Multi-format image support (JPEG, BMP, TIFF, WebP, PNG, GIF, ICO, etc.)
-  * Intelligent image caching with LRU eviction and persistence
-  * All dependencies for hardware access and audio/video processing
-  * uv package manager for Python dependency management 
+Description: Python SDK for hardware control on Raspberry Pi CM5 devices
+ Provides hardware control and AI capabilities for Distiller devices
+ with support for audio, camera, e-ink display, LED control, ASR
+ (Parakeet/Whisper), and TTS (Piper). Features Rust-based e-ink
+ driver with multi-format image support and intelligent caching. 

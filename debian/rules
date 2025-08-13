@@ -1,5 +1,8 @@
 #!/usr/bin/make -f
 
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
 %:
 	dh $@ --with python3
 
@@ -8,53 +11,45 @@ override_dh_auto_build:
 	true
 
 override_dh_auto_install:
-	# Create the /opt/distiller-cm5-sdk directory structure
+	# Create installation directory structure
 	install -d $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk
 	install -d $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/lib
 	install -d $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/models
 	install -d $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/bin
 	
-	# Copy Python source code preserving src directory structure
+	# Copy Python source code
 	cp -r src $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/
-	# Remove embedded Rust sources/build artifacts that are not needed at run-time
+	
+	# Clean up unnecessary files from source
 	rm -rf $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/src/distiller_cm5_sdk/hardware/eink/lib
-	# Remove model files from src directory to avoid duplication (they're copied to models/ separately)
 	rm -rf $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/src/distiller_cm5_sdk/parakeet/models/*
 	rm -rf $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/src/distiller_cm5_sdk/piper/models/*
 	rm -rf $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/src/distiller_cm5_sdk/piper/piper/*
 	rm -rf $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/src/distiller_cm5_sdk/whisper/models/*
 	
-	# Copy uv configuration files
+	# Copy configuration files
 	cp pyproject.toml $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/
-	# Copy README.md file (required by pyproject.toml)
 	cp README.md $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/
-	# Note: uv.lock is not copied to avoid architecture conflicts
-	# It will be generated during installation on the target system
-	# Copy requirements.txt as backup (for compatibility)
 	if [ -f requirements.txt ]; then \
 		cp requirements.txt $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/; \
 	fi
 	
-	# Copy model files (must exist)
+	# Copy model files
 	cp -r src/distiller_cm5_sdk/parakeet/models $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/models/parakeet/
-	# Copy piper voice models to the correct location
 	cp -r src/distiller_cm5_sdk/piper/models $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/models/piper/
-	# Copy piper executable to the expected location: models/piper/piper/
 	cp -r src/distiller_cm5_sdk/piper/piper $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/models/piper/piper/
-	# Ignore whisper models for now, as they are not needed for the initial release
-	# cp -r src/distiller_cm5_sdk/whisper/models $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/models/whisper/
 	
-	# Install the ARM64 shared object only (no extra Rust build files)
+	# Install shared library
 	install -D -m 755 src/distiller_cm5_sdk/hardware/eink/lib/libdistiller_display_sdk_shared.so \
 		$(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/lib/libdistiller_display_sdk_shared.so
 	
-	# Create a symlink to the shared library in system lib for compatibility
+	# Create system library symlink
 	install -d $(CURDIR)/debian/distiller-cm5-sdk/usr/lib
 	ln -sf /opt/distiller-cm5-sdk/lib/libdistiller_display_sdk_shared.so \
 		$(CURDIR)/debian/distiller-cm5-sdk/usr/lib/libdistiller_display_sdk_shared.so
 
 override_dh_python3:
-	# Skip dh_python3 since we're using uv for Python environment management
+	# Skip dh_python3 - we manage Python environment with uv
 	true
 
 override_dh_strip:

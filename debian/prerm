@@ -1,37 +1,25 @@
 #!/bin/sh
 set -e
 
-# Pre-removal script for distiller-cm5-sdk
+case "$1" in
+remove | upgrade | deconfigure)
+	# Check for processes using SDK files (informational only)
+	if [ -d "/opt/distiller-cm5-sdk" ]; then
+		if lsof +D /opt/distiller-cm5-sdk 2>/dev/null | grep -q -v COMMAND; then
+			echo "Warning: Some processes may be using distiller-cm5-sdk files"
+		fi
+	fi
+	;;
 
-if [ "$1" = "remove" ] || [ "$1" = "upgrade" ] || [ "$1" = "deconfigure" ]; then
-    echo "Preparing to remove distiller-cm5-sdk..."
-    
-    # Check if any processes are using the SDK files
-    if [ -d "/opt/distiller-cm5-sdk" ]; then
-        # Find processes using the uv virtual environment
-        VENV_PROCESSES=$(lsof +D /opt/distiller-cm5-sdk/.venv 2>/dev/null | grep -v COMMAND || true)
-        if [ -n "$VENV_PROCESSES" ]; then
-            echo "Warning: Some processes are still using the distiller-cm5-sdk uv virtual environment:"
-            echo "$VENV_PROCESSES"
-            echo "These processes may need to be stopped before removal."
-        fi
-        
-        # Find processes using the shared library
-        LIB_PROCESSES=$(lsof /opt/distiller-cm5-sdk/lib/libdistiller_display_sdk_shared.so 2>/dev/null | grep -v COMMAND || true)
-        if [ -n "$LIB_PROCESSES" ]; then
-            echo "Warning: Some processes are still using the distiller-cm5-sdk shared library:"
-            echo "$LIB_PROCESSES"
-            echo "These processes may need to be stopped before removal."
-        fi
-        
-        # Check for any Python processes using files from the SDK directory
-        SDK_PROCESSES=$(lsof +D /opt/distiller-cm5-sdk 2>/dev/null | grep -v COMMAND || true)
-        if [ -n "$SDK_PROCESSES" ]; then
-            echo "Warning: Some processes are still using distiller-cm5-sdk files:"
-            echo "$SDK_PROCESSES"
-            echo "These processes may need to be stopped before removal."
-        fi
-    fi
-fi
+failed-upgrade)
+	;;
 
-#DEBHELPER# 
+*)
+	echo "prerm called with unknown argument \`$1'" >&2
+	exit 1
+	;;
+esac
+
+#DEBHELPER#
+
+exit 0

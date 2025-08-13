@@ -1,50 +1,34 @@
 #!/bin/sh
 set -e
 
-# Post-removal script for distiller-cm5-sdk
+case "$1" in
+remove | upgrade)
+	# Clean up virtual environment
+	rm -rf /opt/distiller-cm5-sdk/.venv
+	rm -f /opt/distiller-cm5-sdk/uv.lock
+	rm -f /opt/distiller-cm5-sdk/activate.sh
+	
+	# Update shared library cache
+	ldconfig
+	;;
 
-if [ "$1" = "remove" ] || [ "$1" = "upgrade" ] || [ "$1" = "deconfigure" ]; then
-    echo "Removing distiller-cm5-sdk..."
-    
-    # Remove uv virtual environment
-    if [ -d "/opt/distiller-cm5-sdk/.venv" ]; then
-        echo "Removing uv virtual environment..."
-        rm -rf /opt/distiller-cm5-sdk/.venv
-    fi
-    
-    # Remove uv-related files
-    rm -f /opt/distiller-cm5-sdk/uv.lock
-    rm -f /opt/distiller-cm5-sdk/.python-version
-    
-    # Remove convenience scripts
-    rm -f /opt/distiller-cm5-sdk/activate.sh
-    rm -f /opt/distiller-cm5-sdk/README
-    
-    # Remove symlink to shared library
-    rm -f /usr/lib/libdistiller_display_sdk_shared.so
-    
-    # Update shared library cache
-    ldconfig
-    
-    echo "distiller-cm5-sdk removed successfully"
-fi
+purge)
+	# Remove entire SDK directory
+	rm -rf /opt/distiller-cm5-sdk
+	
+	# Update shared library cache
+	ldconfig
+	;;
 
-if [ "$1" = "purge" ]; then
-    echo "Purging distiller-cm5-sdk..."
-    
-    # Remove the entire /opt/distiller-cm5-sdk directory
-    if [ -d "/opt/distiller-cm5-sdk" ]; then
-        echo "Removing /opt/distiller-cm5-sdk directory..."
-        rm -rf /opt/distiller-cm5-sdk
-    fi
-    
-    # Remove any remaining symlinks
-    rm -f /usr/lib/libdistiller_display_sdk_shared.so
-    
-    # Update shared library cache
-    ldconfig
-    
-    echo "distiller-cm5-sdk purged successfully"
-fi
+failed-upgrade | abort-install | abort-upgrade | disappear)
+	;;
 
-#DEBHELPER# 
+*)
+	echo "postrm called with unknown argument \`$1'" >&2
+	exit 1
+	;;
+esac
+
+#DEBHELPER#
+
+exit 0

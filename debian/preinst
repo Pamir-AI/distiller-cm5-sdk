@@ -1,0 +1,42 @@
+#!/bin/sh
+set -e
+
+export PATH="/root/.local/bin:/root/.cargo/bin:$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:$PATH"
+
+case "$1" in
+install | upgrade)
+	if ! command -v uv >/dev/null 2>&1; then
+		TEMP_DIR=$(mktemp -d)
+		trap 'rm -rf '"$TEMP_DIR" EXIT
+		
+		if curl -LsSf https://astral.sh/uv/install.sh -o "$TEMP_DIR/install.sh" 2>/dev/null || \
+		   wget -q https://astral.sh/uv/install.sh -O "$TEMP_DIR/install.sh" 2>/dev/null; then
+			if sh "$TEMP_DIR/install.sh" >/dev/null 2>&1; then
+				if ! command -v uv >/dev/null 2>&1; then
+					echo "Warning: uv installed but not in PATH" >&2
+				fi
+			else
+				echo "ERROR: uv package manager required but not installed" >&2
+				echo "Install with: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+				exit 1
+			fi
+		else
+			echo "ERROR: Failed to download uv installer" >&2
+			echo "Install manually: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+			exit 1
+		fi
+	fi
+	;;
+
+abort-upgrade | abort-remove | abort-deconfigure)
+	;;
+
+*)
+	echo "preinst called with unknown argument \`$1'" >&2
+	exit 1
+	;;
+esac
+
+#DEBHELPER#
+
+exit 0
