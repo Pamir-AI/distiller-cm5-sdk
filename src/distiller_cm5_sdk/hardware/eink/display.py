@@ -15,8 +15,11 @@ from functools import lru_cache
 import hashlib
 import json
 import atexit
-import pickle
+import threading
+import weakref
 from pathlib import Path
+import zlib
+import base64
 
 
 class DisplayError(Exception):
@@ -52,8 +55,12 @@ class DitheringMethod(IntEnum):
 class ImageCacheManager:
     """
     Manages caching of converted images to avoid repeated processing.
-    Uses LRU cache with file-based persistence option.
+    Uses LRU cache with JSON-based persistence for security.
+    Thread-safe implementation.
     """
+    
+    # Class-level lock for thread safety
+    _lock = threading.RLock()
     
     def __init__(self, max_size: int = 100, persist_path: Optional[str] = None):
         """
@@ -67,22 +74,68 @@ class ImageCacheManager:
         self.persist_path = persist_path
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._temp_files: Dict[str, str] = {}  # Track temp files for cleanup
+        self._finalizer = None
         
-        # Load persisted cache if available
+        # Load persisted cache if available (JSON format for security)
         if persist_path and os.path.exists(persist_path):
-            try:
-                with open(persist_path, 'rb') as f:
-                    saved_cache = pickle.load(f)
-                    # Validate that cached files still exist
-                    for key, entry in saved_cache.items():
-                        if 'temp_path' in entry and os.path.exists(entry['temp_path']):
-                            self._cache[key] = entry
-                            self._temp_files[key] = entry['temp_path']
-            except Exception as e:
-                print(f"Warning: Could not load cache from {persist_path}: {e}")
+            self._load_cache_from_json(persist_path)
         
-        # Register cleanup on exit
-        atexit.register(self.cleanup)
+        # Use weakref finalizer instead of atexit to avoid circular references
+        self._finalizer = weakref.finalize(self, self._cleanup_static, 
+                                          list(self._temp_files.values()))
+    
+    def _load_cache_from_json(self, persist_path: str) -> None:
+        """Load cache from JSON file with validation."""
+        try:
+            with open(persist_path, 'r') as f:
+                saved_cache = json.load(f)
+                
+                # Validate cache structure and version
+                if not isinstance(saved_cache, dict):
+                    return
+                    
+                cache_version = saved_cache.get('version', 0)
+                if cache_version != 1:  # Current cache version
+                    return
+                    
+                entries = saved_cache.get('entries', {})
+                for key, entry in entries.items():
+                    # Validate entry structure
+                    if not self._validate_cache_entry(entry):
+                        continue
+                        
+                    # Check if temp file still exists
+                    if 'temp_path' in entry and os.path.exists(entry['temp_path']):
+                        self._cache[key] = entry
+                        self._temp_files[key] = entry['temp_path']
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            print(f"Warning: Could not load cache from {persist_path}: {e}")
+    
+    def _validate_cache_entry(self, entry: Any) -> bool:
+        """Validate cache entry structure for security."""
+        if not isinstance(entry, dict):
+            return False
+            
+        required_keys = ['temp_path', 'source_path', 'params']
+        if not all(key in entry for key in required_keys):
+            return False
+            
+        # Validate temp_path is within allowed directory
+        temp_path = entry.get('temp_path', '')
+        if not temp_path.startswith(tempfile.gettempdir()):
+            return False
+            
+        return True
+    
+    @staticmethod
+    def _cleanup_static(temp_files: List[str]) -> None:
+        """Static cleanup method to avoid circular references."""
+        for temp_path in temp_files:
+            try:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+            except:
+                pass
     
     def _generate_cache_key(self, image_path: str, display_width: int, display_height: int,
                            scaling: int, dithering: int, rotate: bool, flop: bool,
@@ -90,9 +143,13 @@ class ImageCacheManager:
         """Generate a unique cache key for the conversion parameters."""
         # Get file modification time for cache invalidation
         try:
-            mtime = os.path.getmtime(image_path)
-        except:
-            mtime = 0
+            if os.path.exists(image_path):
+                mtime = os.path.getmtime(image_path)
+            else:
+                # For non-existent files, use a unique invalid marker
+                mtime = -1
+        except (OSError, IOError):
+            mtime = -1
         
         # Create a unique key from all parameters
         key_data = {
@@ -116,66 +173,78 @@ class ImageCacheManager:
             scaling: int, dithering: int, rotate: bool, flop: bool,
             crop_x: Optional[int], crop_y: Optional[int]) -> Optional[str]:
         """
-        Get cached converted image path if available.
+        Get cached converted image path if available. Thread-safe.
         
         Returns:
             Path to cached temporary file, or None if not cached
         """
-        key = self._generate_cache_key(image_path, display_width, display_height,
-                                      scaling, dithering, rotate, flop, crop_x, crop_y)
-        
-        if key in self._cache:
-            entry = self._cache[key]
-            # Verify the temp file still exists
-            if os.path.exists(entry['temp_path']):
-                # Move to end (most recently used)
-                self._cache.pop(key)
-                self._cache[key] = entry
-                return entry['temp_path']
-            else:
-                # Clean up invalid entry
-                self._cache.pop(key, None)
-                self._temp_files.pop(key, None)
-        
-        return None
+        with self._lock:
+            key = self._generate_cache_key(image_path, display_width, display_height,
+                                          scaling, dithering, rotate, flop, crop_x, crop_y)
+            
+            if key in self._cache:
+                entry = self._cache[key]
+                # Verify the temp file still exists
+                if os.path.exists(entry['temp_path']):
+                    # Move to end (most recently used)
+                    self._cache.pop(key)
+                    self._cache[key] = entry
+                    return entry['temp_path']
+                else:
+                    # Clean up invalid entry
+                    self._cache.pop(key, None)
+                    self._temp_files.pop(key, None)
+            
+            return None
     
     def put(self, image_path: str, display_width: int, display_height: int,
             scaling: int, dithering: int, rotate: bool, flop: bool,
             crop_x: Optional[int], crop_y: Optional[int], temp_path: str) -> None:
         """
-        Store converted image in cache.
+        Store converted image in cache. Thread-safe.
         
         Args:
             temp_path: Path to the converted temporary file
         """
-        key = self._generate_cache_key(image_path, display_width, display_height,
-                                      scaling, dithering, rotate, flop, crop_x, crop_y)
-        
-        # Enforce max size (remove oldest entries)
-        while len(self._cache) >= self.max_size:
-            # Remove oldest (first) entry
-            oldest_key = next(iter(self._cache))
-            self._remove_entry(oldest_key)
-        
-        # Add new entry
-        self._cache[key] = {
-            'temp_path': temp_path,
-            'source_path': image_path,
-            'params': {
-                'width': display_width,
-                'height': display_height,
-                'scaling': scaling,
-                'dithering': dithering,
-                'rotate': rotate,
-                'flop': flop,
-                'crop_x': crop_x,
-                'crop_y': crop_y
+        with self._lock:
+            # Validate temp_path is in temp directory
+            if not temp_path.startswith(tempfile.gettempdir()):
+                raise ValueError(f"Invalid temp path: {temp_path}")
+                
+            key = self._generate_cache_key(image_path, display_width, display_height,
+                                          scaling, dithering, rotate, flop, crop_x, crop_y)
+            
+            # Enforce max size (remove oldest entries)
+            while len(self._cache) >= self.max_size:
+                # Remove oldest (first) entry
+                oldest_key = next(iter(self._cache))
+                self._remove_entry(oldest_key)
+            
+            # Add new entry
+            self._cache[key] = {
+                'temp_path': temp_path,
+                'source_path': image_path,
+                'params': {
+                    'width': display_width,
+                    'height': display_height,
+                    'scaling': scaling,
+                    'dithering': dithering,
+                    'rotate': rotate,
+                    'flop': flop,
+                    'crop_x': crop_x,
+                    'crop_y': crop_y
+                }
             }
-        }
-        self._temp_files[key] = temp_path
-        
-        # Persist cache if configured
-        self._persist()
+            self._temp_files[key] = temp_path
+            
+            # Update finalizer with new temp files list
+            if self._finalizer:
+                self._finalizer.detach()
+            self._finalizer = weakref.finalize(self, self._cleanup_static,
+                                              list(self._temp_files.values()))
+            
+            # Persist cache if configured
+            self._persist()
     
     def _remove_entry(self, key: str) -> None:
         """Remove a cache entry and clean up its temp file."""
@@ -190,60 +259,72 @@ class ImageCacheManager:
                 pass
     
     def clear(self) -> None:
-        """Clear all cached entries and clean up temp files."""
-        for key in list(self._cache.keys()):
-            self._remove_entry(key)
-        
-        self._cache.clear()
-        self._temp_files.clear()
-        
-        # Clear persisted cache
-        if self.persist_path and os.path.exists(self.persist_path):
-            try:
-                os.unlink(self.persist_path)
-            except:
-                pass
+        """Clear all cached entries and clean up temp files. Thread-safe."""
+        with self._lock:
+            for key in list(self._cache.keys()):
+                self._remove_entry(key)
+            
+            self._cache.clear()
+            self._temp_files.clear()
+            
+            # Clear persisted cache
+            if self.persist_path and os.path.exists(self.persist_path):
+                try:
+                    os.unlink(self.persist_path)
+                except (OSError, IOError):
+                    pass
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        total_size = 0
-        for temp_path in set(self._temp_files.values()):
-            try:
-                total_size += os.path.getsize(temp_path)
-            except:
-                pass
-        
-        return {
-            'entries': len(self._cache),
-            'max_size': self.max_size,
-            'total_bytes': total_size,
-            'persist_enabled': self.persist_path is not None
-        }
+        """Get cache statistics. Thread-safe."""
+        with self._lock:
+            total_size = 0
+            for temp_path in set(self._temp_files.values()):
+                try:
+                    total_size += os.path.getsize(temp_path)
+                except (OSError, IOError):
+                    pass
+            
+            return {
+                'entries': len(self._cache),
+                'max_size': self.max_size,
+                'total_bytes': total_size,
+                'persist_enabled': self.persist_path is not None
+            }
     
     def _persist(self) -> None:
-        """Persist cache to disk if configured."""
+        """Persist cache to disk if configured. Uses JSON for security."""
         if not self.persist_path:
             return
         
         try:
             # Create directory if needed
-            os.makedirs(os.path.dirname(self.persist_path), exist_ok=True)
+            cache_dir = os.path.dirname(self.persist_path)
+            if cache_dir:
+                os.makedirs(cache_dir, exist_ok=True)
             
-            # Save cache
-            with open(self.persist_path, 'wb') as f:
-                pickle.dump(self._cache, f)
-        except Exception as e:
+            # Prepare cache data for JSON serialization
+            cache_data = {
+                'version': 1,
+                'entries': self._cache
+            }
+            
+            # Save cache as JSON
+            with open(self.persist_path, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+        except (OSError, IOError, TypeError) as e:
             print(f"Warning: Could not persist cache to {self.persist_path}: {e}")
     
     def cleanup(self) -> None:
-        """Cleanup temp files on exit."""
-        # Only cleanup files that are not persisted
-        if not self.persist_path:
-            for temp_path in set(self._temp_files.values()):
-                try:
-                    os.unlink(temp_path)
-                except:
-                    pass
+        """Cleanup temp files on exit. Thread-safe."""
+        with self._lock:
+            # Only cleanup files that are not persisted
+            if not self.persist_path:
+                for temp_path in set(self._temp_files.values()):
+                    try:
+                        if os.path.exists(temp_path):
+                            os.unlink(temp_path)
+                    except (OSError, IOError):
+                        pass
 
 
 class Display:
@@ -264,12 +345,22 @@ class Display:
     HEIGHT = 250  # Default, will be updated after initialization
     ARRAY_SIZE = (128 * 250) // 8  # Default, will be updated after initialization
     
-    # Shared cache manager across all Display instances
+    # Shared cache manager across all Display instances (thread-safe)
     _cache_manager: Optional[ImageCacheManager] = None
+    _cache_lock = threading.Lock()
+    
+    # Security: Allowed directories for image access
+    _allowed_dirs: List[str] = [
+        os.path.expanduser("~"),
+        "/tmp",
+        tempfile.gettempdir(),
+        "/opt/distiller-cm5-sdk",
+    ]
     
     def __init__(self, library_path: Optional[str] = None, auto_init: bool = True, 
                  enable_cache: bool = True, cache_size: int = 100, 
-                 cache_persist_path: Optional[str] = None):
+                 cache_persist_path: Optional[str] = None,
+                 allowed_dirs: Optional[List[str]] = None):
         """
         Initialize the Display object.
         
@@ -279,6 +370,7 @@ class Display:
             enable_cache: Whether to enable image caching
             cache_size: Maximum number of cached entries
             cache_persist_path: Optional path to persist cache between sessions
+            allowed_dirs: Optional list of allowed directories for image access
         
         Raises:
             DisplayError: If library can't be loaded or display can't be initialized
@@ -286,17 +378,23 @@ class Display:
         self._lib = None
         self._initialized = False
         
-        # Initialize cache manager if enabled
-        if enable_cache and Display._cache_manager is None:
-            # Default persist path if not specified
-            if cache_persist_path is None and enable_cache:
-                cache_dir = os.path.expanduser("~/.cache/distiller_eink")
-                cache_persist_path = os.path.join(cache_dir, "image_cache.pkl")
-            
-            Display._cache_manager = ImageCacheManager(
-                max_size=cache_size,
-                persist_path=cache_persist_path
-            )
+        # Set allowed directories
+        if allowed_dirs:
+            self._allowed_dirs = [os.path.abspath(d) for d in allowed_dirs]
+        
+        # Initialize cache manager if enabled (thread-safe)
+        if enable_cache:
+            with Display._cache_lock:
+                if Display._cache_manager is None:
+                    # Default persist path if not specified
+                    if cache_persist_path is None:
+                        cache_dir = os.path.expanduser("~/.cache/distiller_eink")
+                        cache_persist_path = os.path.join(cache_dir, "image_cache.json")
+                    
+                    Display._cache_manager = ImageCacheManager(
+                        max_size=cache_size,
+                        persist_path=cache_persist_path
+                    )
         
         # Find and load the shared library
         if library_path is None:
@@ -488,6 +586,37 @@ class Display:
                 return (self.WIDTH, self.HEIGHT)
         return (self.WIDTH, self.HEIGHT)
     
+    def _validate_path(self, path: str) -> None:
+        """
+        Validate that a file path is safe and within allowed directories.
+        
+        Args:
+            path: Path to validate
+            
+        Raises:
+            DisplayError: If path is unsafe or outside allowed directories
+        """
+        # Resolve the absolute path
+        abs_path = os.path.abspath(path)
+        
+        # Check for path traversal attempts
+        if ".." in path or "~" in path:
+            # Expand and resolve to catch traversal attempts
+            resolved_path = os.path.realpath(os.path.expanduser(path))
+            if resolved_path != abs_path:
+                raise DisplayError(f"Path traversal detected: {path}")
+        
+        # Check if path is within allowed directories
+        path_allowed = False
+        for allowed_dir in self._allowed_dirs:
+            allowed_abs = os.path.abspath(allowed_dir)
+            if abs_path.startswith(allowed_abs):
+                path_allowed = True
+                break
+        
+        if not path_allowed:
+            raise DisplayError(f"Path outside allowed directories: {path}")
+    
     def display_image(self, image: Union[str, bytes], mode: DisplayMode = DisplayMode.FULL, rotate: bool = False, flip_horizontal: bool = False, invert_colors: bool = False, src_width: int = None, src_height: int = None) -> None:
         """
         Display an image on the e-ink screen.
@@ -502,12 +631,14 @@ class Display:
             src_height: Source height in pixels (required when transforming raw data)
             
         Raises:
-            DisplayError: If display operation fails
+            DisplayError: If display operation fails or path is unsafe
         """
         if not self._initialized:
             raise DisplayError("Display not initialized. Call initialize() first.")
         
         if isinstance(image, str):
+            # Validate file path for security
+            self._validate_path(image)
             # PNG file path
             self._display_png(image, mode, rotate, flip_horizontal, invert_colors)
         elif isinstance(image, (bytes, bytearray)):
@@ -535,6 +666,7 @@ class Display:
     
     def _display_png(self, filename: str, mode: DisplayMode, rotate: bool = False, flip_horizontal: bool = False, invert_colors: bool = False) -> None:
         """Display a PNG image file."""
+        # Path already validated in display_image()
         if not os.path.exists(filename):
             raise DisplayError(f"PNG file not found: {filename}")
         
@@ -592,18 +724,6 @@ class Display:
         if self._initialized:
             self._lib.display_sleep()
     
-    def get_dimensions(self) -> Tuple[int, int]:
-        """
-        Get display dimensions.
-        
-        Returns:
-            Tuple of (width, height) in pixels
-        """
-        width = c_uint32()
-        height = c_uint32()
-        self._lib.display_get_dimensions(ctypes.byref(width), ctypes.byref(height))
-        return (width.value, height.value)
-    
     def convert_png_to_raw(self, filename: str) -> bytes:
         """
         Convert PNG file to raw 1-bit data.
@@ -615,8 +735,11 @@ class Display:
             Raw 1-bit packed image data (4000 bytes)
             
         Raises:
-            DisplayError: If conversion fails
+            DisplayError: If conversion fails or path is unsafe
         """
+        # Validate path for security
+        self._validate_path(filename)
+        
         if not os.path.exists(filename):
             raise DisplayError(f"PNG file not found: {filename}")
         
@@ -732,6 +855,7 @@ class Display:
         Returns:
             Raw 1-bit packed image data
         """
+        # Path already validated by caller
         if not os.path.exists(image_path):
             raise DisplayError(f"Image file not found: {image_path}")
         
@@ -812,8 +936,11 @@ class Display:
             Path to converted temporary PNG file
             
         Raises:
-            DisplayError: If conversion fails
+            DisplayError: If conversion fails or path is unsafe
         """
+        # Validate path for security
+        self._validate_path(image_path)
+        
         if not os.path.exists(image_path):
             raise DisplayError(f"Image file not found: {image_path}")
         
@@ -872,8 +999,8 @@ class Display:
                 except Exception as e:
                     try:
                         os.unlink(temp_path)
-                    except:
-                        pass
+                    except (OSError, IOError):
+                        pass  # Cleanup error is secondary to the main error
                     raise DisplayError(f"Failed to save converted image: {e}")
                     
             except Exception as rust_error:
@@ -920,8 +1047,8 @@ class Display:
                 except Exception as e:
                     try:
                         os.unlink(temp_path)
-                    except:
-                        pass
+                    except (OSError, IOError):
+                        pass  # Cleanup error is secondary to the main error
                     raise DisplayError(f"Failed to save converted image: {e}")
                 
         except Exception as e:
