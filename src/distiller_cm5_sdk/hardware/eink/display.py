@@ -338,6 +338,8 @@ class Display:
     - Control display refresh modes
     - Manage display power states
     - Cache converted images for improved performance
+    
+    Thread-safe implementation with singleton pattern option.
     """
     
     # Display constants (will be updated dynamically)
@@ -345,9 +347,13 @@ class Display:
     HEIGHT = 250  # Default, will be updated after initialization
     ARRAY_SIZE = (128 * 250) // 8  # Default, will be updated after initialization
     
-    # Shared cache manager across all Display instances (thread-safe)
+    # Shared resources with thread safety
     _cache_manager: Optional[ImageCacheManager] = None
     _cache_lock = threading.Lock()
+    
+    # Singleton instance management
+    _instance: Optional['Display'] = None
+    _instance_lock = threading.Lock()
     
     # Security: Allowed directories for image access
     _allowed_dirs: List[str] = [
@@ -356,6 +362,23 @@ class Display:
         tempfile.gettempdir(),
         "/opt/distiller-cm5-sdk",
     ]
+    
+    @classmethod
+    def get_instance(cls, **kwargs) -> 'Display':
+        """Get or create the singleton Display instance. Thread-safe."""
+        if cls._instance is None:
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls(**kwargs)
+        return cls._instance
+    
+    @classmethod
+    def reset_instance(cls) -> None:
+        """Reset the singleton instance. Used for testing or recovery."""
+        with cls._instance_lock:
+            if cls._instance:
+                cls._instance.close()
+            cls._instance = None
     
     def __init__(self, library_path: Optional[str] = None, auto_init: bool = True, 
                  enable_cache: bool = True, cache_size: int = 100, 
@@ -555,18 +578,17 @@ class Display:
             height_ptr = ctypes.pointer(c_uint32())
             self._lib.display_get_dimensions(width_ptr, height_ptr)
             
+            # Update instance variables only, not class variables
             self.WIDTH = width_ptr.contents.value
             self.HEIGHT = height_ptr.contents.value
             self.ARRAY_SIZE = (self.WIDTH * self.HEIGHT) // 8
             
-            # Also update class-level constants for backwards compatibility
-            Display.WIDTH = self.WIDTH
-            Display.HEIGHT = self.HEIGHT
-            Display.ARRAY_SIZE = self.ARRAY_SIZE
-            
-        except Exception as e:
+        except (AttributeError, TypeError, OSError) as e:
+            # Use class defaults if library call fails
+            self.WIDTH = Display.WIDTH
+            self.HEIGHT = Display.HEIGHT
+            self.ARRAY_SIZE = Display.ARRAY_SIZE
             print(f"Warning: Could not get dimensions from library: {e}")
-            # Keep default values
     
     def get_dimensions(self) -> Tuple[int, int]:
         """
@@ -828,16 +850,18 @@ class Display:
     
     @classmethod
     def clear_cache(cls) -> None:
-        """Clear the image conversion cache."""
-        if cls._cache_manager:
-            cls._cache_manager.clear()
+        """Clear the image conversion cache. Thread-safe."""
+        with cls._cache_lock:
+            if cls._cache_manager:
+                cls._cache_manager.clear()
     
     @classmethod
     def get_cache_stats(cls) -> Dict[str, Any]:
-        """Get cache statistics."""
-        if cls._cache_manager:
-            return cls._cache_manager.get_stats()
-        return {'entries': 0, 'max_size': 0, 'total_bytes': 0, 'persist_enabled': False}
+        """Get cache statistics. Thread-safe."""
+        with cls._cache_lock:
+            if cls._cache_manager:
+                return cls._cache_manager.get_stats()
+            return {'entries': 0, 'max_size': 0, 'total_bytes': 0, 'persist_enabled': False}
     
     def _get_display_dimensions(self) -> Tuple[int, int]:
         """Get current display dimensions."""
@@ -1269,10 +1293,21 @@ def get_display_info() -> dict:
     Returns:
         Dictionary with display specs
     """
+    # Create a temporary display instance to get actual dimensions
+    try:
+        with Display(auto_init=False) as display:
+            width, height = display.get_dimensions()
+            array_size = (width * height) // 8
+    except:
+        # Fall back to class defaults
+        width = Display.WIDTH
+        height = Display.HEIGHT
+        array_size = Display.ARRAY_SIZE
+    
     return {
-        "width": Display.WIDTH,
-        "height": Display.HEIGHT,
-        "data_size": Display.ARRAY_SIZE,
+        "width": width,
+        "height": height,
+        "data_size": array_size,
         "format": "1-bit monochrome",
         "type": "e-ink"
     }
