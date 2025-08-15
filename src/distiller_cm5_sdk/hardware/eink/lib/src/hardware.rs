@@ -103,7 +103,7 @@ impl SpiController for DefaultSpiController {
 
         let options = SpidevOptions::new()
             .bits_per_word(8)
-            .max_speed_hz(40_000_000)
+            .max_speed_hz(80_000_000)  // Increased from 40MHz to 80MHz for Raspberry Pi CM5
             .mode(SpiModeFlags::SPI_MODE_0)
             .build();
 
@@ -116,9 +116,9 @@ impl SpiController for DefaultSpiController {
     fn write_all(&mut self, data: &[u8]) -> Result<(), DisplayError> {
         use std::io::Write;
         
-        // Linux SPI drivers typically have transfer size limits around 4KB
-        // Split large transfers into smaller chunks to avoid "Message too long" errors
-        const MAX_CHUNK_SIZE: usize = 4096;
+        // Increased chunk size from 4KB to 32KB for better throughput
+        // Modern Linux kernels and Pi CM5 can handle larger transfers
+        const MAX_CHUNK_SIZE: usize = 32768;  // 32KB chunks
         
         if data.len() <= MAX_CHUNK_SIZE {
             // Small transfer, send directly
@@ -132,8 +132,8 @@ impl SpiController for DefaultSpiController {
                     .write_all(chunk)
                     .map_err(|e| DisplayError::Spi(format!("Failed to write data chunk: {}", e)))?;
                     
-                // Small delay between chunks to avoid overwhelming the SPI bus
-                std::thread::sleep(std::time::Duration::from_micros(100));
+                // Reduced delay from 100μs to 10μs - modern hardware needs less delay
+                std::thread::sleep(std::time::Duration::from_micros(10));
             }
             Ok(())
         }
