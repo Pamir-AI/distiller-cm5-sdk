@@ -7,19 +7,14 @@ Provides functionality for e-ink display control and image display.
 import os
 import ctypes
 from ctypes import c_bool, c_char_p, c_uint32, POINTER
-from enum import IntEnum
+from enum import IntEnum, Enum
 from typing import Optional, Tuple, Union, Dict, Any, List
 import tempfile
-from PIL import Image, ImageOps
-from functools import lru_cache
+from PIL import Image
 import hashlib
 import json
-import atexit
 import threading
 import weakref
-from pathlib import Path
-import zlib
-import base64
 
 
 class DisplayError(Exception):
@@ -33,7 +28,7 @@ class DisplayMode(IntEnum):
     PARTIAL = 1   # Partial refresh - fast updates
 
 
-class FirmwareType:
+class FirmwareType(Enum):
     """Supported e-ink display firmware types."""
     EPD128x250 = "EPD128x250"
     EPD240x416 = "EPD240x416"
@@ -134,7 +129,7 @@ class ImageCacheManager:
             try:
                 if os.path.exists(temp_path):
                     os.unlink(temp_path)
-            except:
+            except (OSError, IOError):
                 pass
     
     def _generate_cache_key(self, image_path: str, display_width: int, display_height: int,
@@ -255,7 +250,7 @@ class ImageCacheManager:
         if temp_path and temp_path not in self._temp_files.values():
             try:
                 os.unlink(temp_path)
-            except:
+            except (OSError, IOError):
                 pass
     
     def clear(self) -> None:
@@ -351,10 +346,6 @@ class Display:
     _cache_manager: Optional[ImageCacheManager] = None
     _cache_lock = threading.Lock()
     
-    # Singleton instance management
-    _instance: Optional['Display'] = None
-    _instance_lock = threading.Lock()
-    
     # Security: Allowed directories for image access
     _allowed_dirs: List[str] = [
         os.path.expanduser("~"),
@@ -362,23 +353,6 @@ class Display:
         tempfile.gettempdir(),
         "/opt/distiller-cm5-sdk",
     ]
-    
-    @classmethod
-    def get_instance(cls, **kwargs) -> 'Display':
-        """Get or create the singleton Display instance. Thread-safe."""
-        if cls._instance is None:
-            with cls._instance_lock:
-                if cls._instance is None:
-                    cls._instance = cls(**kwargs)
-        return cls._instance
-    
-    @classmethod
-    def reset_instance(cls) -> None:
-        """Reset the singleton instance. Used for testing or recovery."""
-        with cls._instance_lock:
-            if cls._instance:
-                cls._instance.close()
-            cls._instance = None
     
     def __init__(self, library_path: Optional[str] = None, auto_init: bool = True, 
                  enable_cache: bool = True, cache_size: int = 100, 
@@ -604,7 +578,7 @@ class Display:
                 height_ptr = ctypes.pointer(c_uint32())
                 self._lib.display_get_dimensions(width_ptr, height_ptr)
                 return (width_ptr.contents.value, height_ptr.contents.value)
-            except:
+            except (AttributeError, TypeError, OSError):
                 return (self.WIDTH, self.HEIGHT)
         return (self.WIDTH, self.HEIGHT)
     
@@ -786,7 +760,7 @@ class Display:
             self._lib.display_cleanup()
             self._initialized = False
     
-    def set_firmware(self, firmware_type: str) -> None:
+    def set_firmware(self, firmware_type: Union[str, FirmwareType]) -> None:
         """
         Set the default firmware type for the display.
         
@@ -799,7 +773,11 @@ class Display:
         if not (hasattr(self, '_config_available') and self._config_available):
             raise DisplayError("Configuration system not available. Please rebuild the Rust library.")
         
-        firmware_bytes = firmware_type.encode('utf-8')
+        if isinstance(firmware_type, FirmwareType):
+            firmware_str = firmware_type.value
+        else:
+            firmware_str = firmware_type
+        firmware_bytes = firmware_str.encode('utf-8')
         success = self._lib.display_set_firmware(firmware_bytes)
         if not success:
             raise DisplayError(f"Failed to set firmware type: {firmware_type}")
@@ -1195,7 +1173,7 @@ class Display:
                 if not Display._cache_manager or temp_path not in Display._cache_manager._temp_files.values():
                     try:
                         os.unlink(temp_path)
-                    except:
+                    except (OSError, IOError):
                         pass  # Ignore cleanup errors
     
     def display_image_auto(self, image_path: str, mode: DisplayMode = DisplayMode.FULL,
@@ -1298,7 +1276,7 @@ def get_display_info() -> dict:
         with Display(auto_init=False) as display:
             width, height = display.get_dimensions()
             array_size = (width * height) // 8
-    except:
+    except Exception:
         # Fall back to class defaults
         width = Display.WIDTH
         height = Display.HEIGHT
@@ -1435,12 +1413,12 @@ def invert_bitpacked_colors(src_data: bytes) -> bytes:
 
 
 # Configuration convenience functions
-def set_default_firmware(firmware_type: str) -> None:
+def set_default_firmware(firmware_type: Union[str, FirmwareType]) -> None:
     """
     Set the default firmware type globally.
     
     Args:
-        firmware_type: Firmware type string (e.g., FirmwareType.EPD128x250, FirmwareType.EPD240x416)
+        firmware_type: Firmware type (e.g., FirmwareType.EPD128x250, FirmwareType.EPD240x416 or string)
         
     Raises:
         DisplayError: If firmware type is invalid or setting fails
