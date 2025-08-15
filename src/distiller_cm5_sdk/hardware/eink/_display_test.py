@@ -8,7 +8,7 @@ import os
 import tempfile
 from unittest.mock import Mock, patch, MagicMock
 
-from display import Display, DisplayError, DisplayMode, display_png, clear_display, get_display_info, FirmwareType, set_default_firmware, get_default_firmware
+from distiller_cm5_sdk.hardware.eink.display import Display, DisplayError, DisplayMode, display_png, clear_display, get_display_info, FirmwareType, set_default_firmware, get_default_firmware
 
 
 class TestDisplay(unittest.TestCase):
