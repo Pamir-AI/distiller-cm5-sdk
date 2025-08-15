@@ -13,6 +13,9 @@ else
     RUST_TARGET = aarch64-unknown-linux-gnu
 endif
 
+# ARM-specific optimizations for Cortex-A76
+export RUSTFLAGS = -C target-cpu=cortex-a76 -C target-feature=+neon,+fp16,+crc -C link-arg=-march=armv8.2-a+fp16+simd
+
 CARGO = cargo
 
 .PHONY: all clean build install-target target-info
