@@ -1,10 +1,10 @@
-import subprocess
-import os
 import logging
+import os
 import re
+import subprocess
 
-from distiller_cm5_sdk.hardware.audio.audio import Audio
 from distiller_cm5_sdk import get_model_path
+from distiller_cm5_sdk.hardware.audio.audio import Audio
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,7 +24,7 @@ class Piper:
             model_path = get_model_path("piper")
         if piper_path is None:
             piper_path = os.path.join(model_path, "piper")
-        
+
         self.model_path = model_path
         self.piper_path = piper_path
         self.voice_onnx = os.path.join(self.model_path, "en_US-amy-medium.onnx")
@@ -56,12 +56,12 @@ class Piper:
         except subprocess.CalledProcessError as e:
             logger.error(f"Piper: Error running piper command: {e.stderr}")
             raise ValueError(f"Piper: Error running piper command: {e.stderr}")
-    
+
     def find_hw_by_name(self, card_name):
         try:
             result = subprocess.run(['aplay', '-l'], capture_output=True, text=True, check=True)
             lines = result.stdout.splitlines()
-            
+
             for line in lines:
                 if 'card' in line and card_name in line:
                     match = re.search(r'card (\d+):', line)
@@ -69,7 +69,7 @@ class Piper:
                         card_num = match.group(1)
                         logger.info(f"Piper: Found sound card '{card_name}' with number {card_num}")
                         return card_num
-            
+
             logger.warning(f"Piper: Sound card '{card_name}' not found, defaulting to card 0")
             return "0"  # Default fallback
         except Exception as e:
@@ -82,12 +82,12 @@ class Piper:
             raise ValueError("Piper: The volume level is not within the range of 0-100.")
 
         Audio.set_speaker_volume_static(volume)
-        
+
         # Find sound card by name if provided
         hw_num = "0"  # Default
         if sound_card_name:
             hw_num = self.find_hw_by_name(sound_card_name)
-        
+
         # Escape single quotes in text to prevent shell syntax errors
         escaped_text = text.replace("'", "'\\''")
         command = f"""echo '{escaped_text}' | sudo {self.piper} --model {self.voice_onnx} --config {self.voice_json} --output-raw | aplay -D plughw:{hw_num} -r 22050 -f S16_LE -t raw"""

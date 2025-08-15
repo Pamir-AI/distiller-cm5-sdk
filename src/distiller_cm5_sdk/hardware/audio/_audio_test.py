@@ -1,5 +1,6 @@
-from audio import Audio
 import time
+
+from audio import Audio
 
 print("Testing static methods:")
 print(f"Current mic gain: {Audio.get_mic_gain_static()}")
@@ -18,7 +19,7 @@ if audio.check_system_config():
 else:
     print("System config is Not Configured")
 
-    
+
 audio.play("test_audio.wav")
 audio.set_speaker_volume(60)
 print(f"Speaker volume: {audio.get_speaker_volume()}")

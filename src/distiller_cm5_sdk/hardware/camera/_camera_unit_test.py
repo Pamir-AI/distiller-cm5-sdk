@@ -6,18 +6,19 @@ This script tests all available functions with a real camera and saves captured 
 
 import os
 import time
-import numpy as np
+
 from camera import Camera
+
 
 def main():
     """Main test function for testing all camera functionality with real hardware."""
     print("=== CM5 Camera Real Hardware Test ===")
-    
+
     # Create output directory for captured images
     output_dir = "camera_test_output"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    
+
     # Initialize camera with real hardware
     print("\n1. Initializing camera...")
     camera = Camera(
@@ -28,7 +29,7 @@ def main():
         auto_check_config=True
     )
     print("  - Camera initialized successfully")
-    
+
     # Test system configuration
     print("\n2. Testing system configuration...")
     try:
@@ -36,12 +37,12 @@ def main():
             print("  - System configuration check passed")
     except Exception as e:
         print(f"  - System configuration check failed: {e}")
-    
+
     # Test available settings
     print("\n3. Testing available camera settings...")
     settings = camera.get_available_settings()
     print(f"  - Available settings: {settings}")
-    
+
     # Test getting current settings
     print("\n4. Testing current camera settings...")
     for setting in settings:
@@ -50,7 +51,7 @@ def main():
             print(f"  - {setting}: {value}")
         except Exception as e:
             print(f"  - Failed to get {setting}: {e}")
-    
+
     # Test adjusting settings
     print("\n5. Testing setting adjustments...")
     test_settings = {
@@ -58,7 +59,7 @@ def main():
         'contrast': 60,
         'saturation': 60
     }
-    
+
     # Store original values
     original_values = {}
     for setting, test_value in test_settings.items():
@@ -72,7 +73,7 @@ def main():
                 print(f"  - Failed to adjust {setting}")
         except Exception as e:
             print(f"  - Error adjusting {setting}: {e}")
-    
+
     # Test different formats
     print("\n6. Testing different formats...")
     formats = ['bgr', 'rgb', 'gray']
@@ -95,10 +96,10 @@ def main():
             print(f"  - Frame shape: {frame.shape}")
         except Exception as e:
             print(f"  - Error testing format {fmt}: {e}")
-    
+
     # Reset to BGR for remaining tests
     camera.format = 'bgr'
-    
+
     # Test rotation
     print("\n7. Testing rotation settings...")
     rotations = [0, 90, 180, 270]
@@ -113,10 +114,10 @@ def main():
             print(f"  - Frame shape: {frame.shape}")
         except Exception as e:
             print(f"  - Error testing rotation {rotation}: {e}")
-    
+
     # Reset rotation
     camera.rotation = 0
-    
+
     # Test capturing single image
     print("\n8. Testing image capture...")
     try:
@@ -126,27 +127,27 @@ def main():
         print(f"  - Frame shape: {frame.shape}")
     except Exception as e:
         print(f"  - Error capturing image: {e}")
-    
+
     # Test stream with callbacks
     print("\n9. Testing stream with callbacks...")
     frames_received = []
-    
+
     def stream_callback(frame):
         frames_received.append(frame.shape)
         if len(frames_received) == 1:
-            # Save first frame 
+            # Save first frame
             cv2.imwrite(f"{output_dir}/stream_callback.jpg", frame)
             print(f"  - Saved stream callback frame to {output_dir}/stream_callback.jpg")
-    
+
     try:
         camera.start_stream(callback=stream_callback)
-        print(f"  - Stream started with callback")
+        print("  - Stream started with callback")
         time.sleep(2)  # Wait to receive frames
         camera.stop_stream()
         print(f"  - Stream stopped after receiving {len(frames_received)} frames")
     except Exception as e:
         print(f"  - Error testing stream callback: {e}")
-    
+
     # Test starting and stopping stream
     print("\n10. Testing start/stop stream...")
     try:
@@ -161,7 +162,7 @@ def main():
         print("  - Stream stopped")
     except Exception as e:
         print(f"  - Error testing stream: {e}")
-    
+
     # Restore original settings
     print("\n11. Restoring original settings...")
     for setting, original_value in original_values.items():
@@ -170,12 +171,12 @@ def main():
             print(f"  - Restored {setting} to {original_value}")
         except Exception as e:
             print(f"  - Error restoring {setting}: {e}")
-    
+
     # Close the camera
     print("\n12. Closing camera...")
     camera.close()
     print("  - Camera closed")
-    
+
     print("\n=== Test completed successfully ===")
     print(f"All captured images saved to {os.path.abspath(output_dir)}")
 

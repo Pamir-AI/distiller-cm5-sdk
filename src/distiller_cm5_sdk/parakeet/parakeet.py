@@ -1,18 +1,19 @@
-import os
 import io
-import time
-from typing import Generator, Tuple, List, Optional
 import logging
-import pyaudio
-import wave
+import os
 import threading
-import sherpa_onnx
-import numpy as np
-import soundfile as sf
-import sounddevice as sd
+import time
+import wave
+from collections.abc import Generator
 
-from distiller_cm5_sdk.hardware.audio.audio import Audio
+import numpy as np
+import pyaudio
+import sherpa_onnx
+import sounddevice as sd
+import soundfile as sf
+
 from distiller_cm5_sdk import get_model_path
+from distiller_cm5_sdk.hardware.audio.audio import Audio
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -20,12 +21,12 @@ logging.basicConfig(level=logging.INFO,
 
 class Parakeet:
     def __init__(self, model_config=None, audio_config=None, vad_silence_duration:float=1.0) -> None:
-        # override mic gain 
+        # override mic gain
         Audio.set_mic_gain_static(85)
         if audio_config is None:
-            audio_config = dict()
+            audio_config = {}
         if model_config is None:
-            model_config = dict()
+            model_config = {}
         model_path = get_model_path("parakeet")
         self.model_config = {
             "model_path": model_config.get("model_path", model_path),
@@ -79,7 +80,7 @@ class Parakeet:
         else:
             logging.error("VAD Model is not ready")
             return None
-            
+
     def load_model(self):
         logging.info(f"Loading Parakeet Model from {self.model_config['model_path']}")
 
@@ -156,19 +157,19 @@ class Parakeet:
         """Initialize PyAudio instance and get device info if needed"""
         if self._pyaudio is None:
             self._pyaudio = pyaudio.PyAudio()
-            
+
         # Check if any input devices are available
         input_devices = []
         for i in range(self._pyaudio.get_device_count()):
             device_info = self._pyaudio.get_device_info_by_index(i)
             if device_info["maxInputChannels"] > 0:
                 input_devices.append((i, device_info["name"]))
-                
+
         if not input_devices:
             raise Exception("No audio input devices found. Please ensure a microphone is connected.")
-            
+
         logging.info(f"Found {len(input_devices)} input device(s): {[name for _, name in input_devices]}")
-            
+
         # If a specific device name was provided, find its index
         if isinstance(self.audio_config["device"], str):
             device_index = None
@@ -190,7 +191,7 @@ class Parakeet:
             except OSError:
                 self.audio_config["device"] = input_devices[0][0]
                 logging.info(f"No default device, using first available: {input_devices[0][1]}")
-                
+
     def _recording_thread(self):
         """Thread function for audio recording"""
         while self._is_recording:
@@ -200,21 +201,21 @@ class Parakeet:
             except Exception as e:
                 logging.error(f"Error recording audio: {e}")
                 break
-    
+
     def start_recording(self) -> bool:
         """
         Start recording audio (push-to-talk start).
-        
+
         Returns:
             True if recording started successfully, False otherwise
         """
         if self._is_recording:
             logging.warning("Already recording")
             return False
-            
+
         try:
             self._init_audio()
-            
+
             self._stream = self._pyaudio.open(
                 format=self.audio_config["format"],
                 channels=self.audio_config["channels"],
@@ -223,67 +224,67 @@ class Parakeet:
                 input_device_index=self.audio_config["device"],
                 frames_per_buffer=self.audio_config["chunk"]
             )
-            
+
             self._audio_frames = []
             self._is_recording = True
             self._audio_thread = threading.Thread(target=self._recording_thread)
             self._audio_thread.daemon = True
             self._audio_thread.start()
-            
+
             logging.info("Recording started")
             return True
         except Exception as e:
             logging.error(f"Failed to start recording: {e}")
             self._is_recording = False
             return False
-    
+
     def stop_recording(self) -> bytes:
         """
         Stop recording audio (push-to-talk end) and return the recorded audio as bytes.
-        
+
         Returns:
             Audio data as bytes in WAV format
         """
         if not self._is_recording:
             logging.warning("Not recording")
             return None
-            
+
         self._is_recording = False
         if self._audio_thread:
             self._audio_thread.join(timeout=1.0)
-            
+
         if self._stream:
             self._stream.stop_stream()
             self._stream.close()
             self._stream = None
-            
+
         logging.info("Recording stopped")
-        
+
         # Convert raw audio data to WAV format
         if not self._audio_frames:
             logging.warning("No audio recorded")
             return None
-            
+
         buffer = io.BytesIO()
         with wave.open(buffer, 'wb') as wf:
             wf.setnchannels(self.audio_config["channels"])
             wf.setsampwidth(self._pyaudio.get_sample_size(self.audio_config["format"]))
             wf.setframerate(self.audio_config["rate"])
             wf.writeframes(b''.join(self._audio_frames))
-            
+
         return buffer.getvalue()
-    
+
     def cleanup(self):
         """Release PyAudio resources"""
         if self._pyaudio:
             self._pyaudio.terminate()
             self._pyaudio = None
-    
+
     def record_and_transcribe_ptt(self) -> Generator[str, None, None]:
         """
         Simple interactive push-to-talk demo.
         Press Enter to start recording, press Enter again to stop and transcribe.
-        
+
         Returns:
             Generator yielding transcribed text segments
         """
@@ -291,10 +292,10 @@ class Parakeet:
             input("Press Enter to start recording...")
             if not self.start_recording():
                 return
-                
+
             input("Recording... Press Enter to stop...")
             audio_data = self.stop_recording()
-            
+
             if audio_data:
                 print("Transcribing...")
                 yield from self.transcribe_buffer(audio_data)
@@ -359,7 +360,7 @@ class Parakeet:
                     yield _stream.result.text.strip()
 
 
-class suppress_stdout_stderr(object):
+class suppress_stdout_stderr:
     def __init__(self):
         self.null_fds = [os.open(os.devnull, os.O_RDWR) for x in range(2)]
         self.save_fds = (os.dup(1), os.dup(2))
@@ -399,7 +400,7 @@ if __name__ == '__main__':
                     logging.info(f"Recording saved to {output_filename}")
                 except Exception as e:
                     logging.warning(f"Could not save debug recording: {e}")
-                    
+
                 print("Transcribing...")
                 for text in parakeet.transcribe_buffer(audio_data):
                     print(f"Transcribed: {text}")
@@ -415,7 +416,7 @@ if __name__ == '__main__':
         print("3. Test audio capture: 'arecord -l' should show capture devices")
         print("4. Try running with sudo if permission issues persist")
         exit(1)
-        
+
     # for text in parakeet.auto_record_and_transcribe():
     #     print(f"Transcribed: {text}")
 
