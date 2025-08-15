@@ -3,6 +3,8 @@ use crate::firmware::DisplaySpec;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, Rgb, GrayImage};
 use image::imageops::{self, FilterType};
 use std::path::Path;
+
+#[cfg(not(target_arch = "aarch64"))]
 use rayon::prelude::*;
 
 #[cfg(target_arch = "aarch64")]
@@ -221,6 +223,7 @@ fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
 }
 
 /// Standard ordered dithering (non-NEON)
+#[allow(dead_code)]
 fn ordered_dither(img: &GrayImage) -> GrayImage {
     let width = img.width();
     let height = img.height();
@@ -411,9 +414,10 @@ fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8
                 let mask = vcgtq_u8(pixels, threshold);
                 
                 // Extract comparison results as bits
-                // This is simplified - actual implementation would use vget_lane and bit manipulation
+                // Convert mask to array for bit extraction
+                let mask_bytes = std::mem::transmute::<uint8x16_t, [u8; 16]>(mask);
                 for j in 0..16 {
-                    let bit = vgetq_lane_u8(mask, j as i32) & 1;
+                    let bit = (mask_bytes[j] != 0) as u8;
                     packed_bits |= (bit as u128) << (i * 16 + j);
                 }
             }

@@ -103,6 +103,7 @@ pub type DefaultDisplay = GenericDisplay<crate::protocol::DefaultProtocol>;
 
 // Buffer pool for memory optimization
 #[repr(align(64))]  // Align to cache line boundary for ARM Cortex-A76
+#[allow(dead_code)]
 struct BufferPool {
     image_buffer: Vec<u8>,
     temp_buffer: Vec<u8>,
@@ -110,6 +111,7 @@ struct BufferPool {
 }
 
 impl BufferPool {
+    #[allow(dead_code)]
     fn new(size: usize) -> Self {
         // Pre-allocate aligned buffers to avoid runtime allocations
         let mut image_buffer = Vec::with_capacity(size);
@@ -128,14 +130,17 @@ impl BufferPool {
         }
     }
     
+    #[allow(dead_code)]
     fn get_image_buffer(&mut self) -> &mut [u8] {
         &mut self.image_buffer
     }
     
+    #[allow(dead_code)]
     fn get_temp_buffer(&mut self) -> &mut [u8] {
         &mut self.temp_buffer
     }
     
+    #[allow(dead_code)]
     fn get_processing_buffer(&mut self) -> &mut [u8] {
         &mut self.processing_buffer
     }
