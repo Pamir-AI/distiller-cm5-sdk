@@ -101,12 +101,68 @@ impl<P: EinkProtocol> DisplayDriver for GenericDisplay<P> {
 // Default display driver type
 pub type DefaultDisplay = GenericDisplay<crate::protocol::DefaultProtocol>;
 
-// Global state for C FFI compatibility
-struct GlobalDisplayState {
-    display: Option<DefaultDisplay>,
+// Buffer pool for memory optimization
+#[repr(align(64))]  // Align to cache line boundary for ARM Cortex-A76
+struct BufferPool {
+    image_buffer: Vec<u8>,
+    temp_buffer: Vec<u8>,
+    processing_buffer: Vec<u8>,
 }
 
-static GLOBAL_STATE: Mutex<GlobalDisplayState> = Mutex::new(GlobalDisplayState { display: None });
+impl BufferPool {
+    fn new(size: usize) -> Self {
+        // Pre-allocate aligned buffers to avoid runtime allocations
+        let mut image_buffer = Vec::with_capacity(size);
+        let mut temp_buffer = Vec::with_capacity(size);
+        let mut processing_buffer = Vec::with_capacity(size);
+        
+        // Initialize to avoid uninitialized memory access
+        image_buffer.resize(size, 0);
+        temp_buffer.resize(size, 0);
+        processing_buffer.resize(size, 0);
+        
+        Self {
+            image_buffer,
+            temp_buffer,
+            processing_buffer,
+        }
+    }
+    
+    fn get_image_buffer(&mut self) -> &mut [u8] {
+        &mut self.image_buffer
+    }
+    
+    fn get_temp_buffer(&mut self) -> &mut [u8] {
+        &mut self.temp_buffer
+    }
+    
+    fn get_processing_buffer(&mut self) -> &mut [u8] {
+        &mut self.processing_buffer
+    }
+}
+
+// Global state for C FFI compatibility with buffer pool
+struct GlobalDisplayState {
+    display: Option<DefaultDisplay>,
+    buffer_pool: Option<BufferPool>,
+}
+
+impl GlobalDisplayState {
+    const fn new() -> Self {
+        Self {
+            display: None,
+            buffer_pool: None,
+        }
+    }
+    
+    fn ensure_buffer_pool(&mut self, size: usize) {
+        if self.buffer_pool.is_none() {
+            self.buffer_pool = Some(BufferPool::new(size));
+        }
+    }
+}
+
+static GLOBAL_STATE: Mutex<GlobalDisplayState> = Mutex::new(GlobalDisplayState::new());
 
 // Public Rust API functions
 pub fn display_init() -> Result<(), DisplayError> {
@@ -116,6 +172,13 @@ pub fn display_init() -> Result<(), DisplayError> {
         let protocol = create_default_protocol()?;
         let mut display = DefaultDisplay::new(protocol);
         display.init()?;
+        
+        // Initialize buffer pool with appropriate size for the display
+        let buffer_size = match protocol.get_spec() {
+            spec => spec.array_size() * 2,  // Double size for processing
+        };
+        state.ensure_buffer_pool(buffer_size);
+        
         state.display = Some(display);
     }
 
