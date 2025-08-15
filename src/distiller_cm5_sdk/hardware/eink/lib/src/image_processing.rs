@@ -4,9 +4,6 @@ use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, Rgb, GrayImage};
 use image::imageops::{self, FilterType};
 use std::path::Path;
 
-#[cfg(not(target_arch = "aarch64"))]
-use rayon::prelude::*;
-
 #[cfg(target_arch = "aarch64")]
 use std::arch::aarch64::*;
 
@@ -24,7 +21,7 @@ pub enum ScalingMethod {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DitheringMethod {
     FloydSteinberg = 0,  // High quality dithering
-    Simple = 1,          // Fast threshold conversion
+    Simple = 1,          // Fast ordered dithering
 }
 
 /// Image processing options
@@ -158,7 +155,7 @@ const BAYER_MATRIX_4X4: [[u8; 4]; 4] = [
     [15, 7, 13, 5],
 ];
 
-/// Ordered dithering with NEON optimization - much faster than Floyd-Steinberg
+/// NEON-optimized ordered dithering for ARM64
 #[cfg(target_arch = "aarch64")]
 fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
     let width = img.width() as usize;
@@ -167,12 +164,11 @@ fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
     let in_data = img.as_raw();
     let out_data = output.as_mut();
     
-    // Process rows sequentially (can't use par_iter with unsafe mutable access)
-    for y in 0..height {
-        let y_mod = y % 4;
-        let mut x = 0;
-        
-        unsafe {
+    unsafe {
+        for y in 0..height {
+            let y_mod = y % 4;
+            let mut x = 0;
+            
             // Process 16 pixels at a time with NEON
             while x + 16 <= width {
                 let ptr = in_data.as_ptr().add(y * width + x);
@@ -201,30 +197,24 @@ fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
                 
                 x += 16;
             }
-        }
-        
-        // Handle remaining pixels
-        while x < width {
-            let pixel = in_data[y * width + x];
-            let threshold = BAYER_MATRIX_4X4[y_mod][x % 4] * 16;
-            let value = if pixel.saturating_add(threshold) > 128 { 255 } else { 0 };
-            out_data[y * width + x] = value;
-            x += 1;
+            
+            // Handle remaining pixels
+            while x < width {
+                let pixel = in_data[y * width + x];
+                let threshold = BAYER_MATRIX_4X4[y_mod][x % 4] * 16;
+                let value = if pixel.saturating_add(threshold) > 128 { 255 } else { 0 };
+                out_data[y * width + x] = value;
+                x += 1;
+            }
         }
     }
     
     output
 }
 
+/// Fallback ordered dithering for non-ARM64
 #[cfg(not(target_arch = "aarch64"))]
 fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
-    // Fallback to regular ordered dithering
-    ordered_dither(img)
-}
-
-/// Standard ordered dithering (non-NEON)
-#[allow(dead_code)]
-fn ordered_dither(img: &GrayImage) -> GrayImage {
     let width = img.width();
     let height = img.height();
     
@@ -246,109 +236,126 @@ fn convert_to_1bit(img: DynamicImage, method: DitheringMethod) -> Result<GrayIma
     
     match method {
         DitheringMethod::FloydSteinberg => {
-            // Apply Floyd-Steinberg dithering
-            Ok(floyd_steinberg_dither(gray))
+            // Apply Floyd-Steinberg dithering with NEON optimization
+            Ok(floyd_steinberg_dither_neon(gray))
         }
         DitheringMethod::Simple => {
-            // Use fast ordered dithering with NEON if available
+            // Use fast ordered dithering with NEON
             Ok(ordered_dither_neon(&gray))
         }
     }
 }
 
-/// Floyd-Steinberg dithering implementation with NEON optimization for ARM64
+/// Floyd-Steinberg dithering with NEON optimization for ARM64
 #[cfg(target_arch = "aarch64")]
-fn floyd_steinberg_dither(mut img: GrayImage) -> GrayImage {
+fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
     let width = img.width() as usize;
     let height = img.height() as usize;
     let data = img.as_mut();
     
-    // Process in chunks of 16 pixels for NEON
-    for y in 0..height {
-        let mut x = 0;
+    unsafe {
+        let threshold = vdup_n_u8(128);
         
-        // NEON vectorized processing for aligned chunks
-        while x + 16 <= width {
-            unsafe {
-                let ptr = data.as_ptr().add(y * width + x);
-                let pixels = vld1q_u8(ptr);
-                
-                // Threshold at 128 using NEON
-                let threshold = vdupq_n_u8(128);
-                let mask = vcgtq_u8(pixels, threshold);
-                
-                // Create output: 255 where mask is true, 0 otherwise
-                let white = vdupq_n_u8(255);
-                let black = vdupq_n_u8(0);
-                let result = vbslq_u8(mask, white, black);
-                
-                // Store result
-                let out_ptr = data.as_mut_ptr().add(y * width + x);
-                vst1q_u8(out_ptr, result);
-                
-                // Calculate and distribute errors (simplified for NEON)
-                // This is a simplified version - full Floyd-Steinberg would need more complex error distribution
-                let pixels_i16 = vmovl_u8(vget_low_u8(pixels));
-                let result_i16 = vmovl_u8(vget_low_u8(result));
-                let error = vsubq_s16(vreinterpretq_s16_u16(pixels_i16), vreinterpretq_s16_u16(result_i16));
-                
-                // Distribute to right neighbor (7/16 of error)
-                if x + 16 < width {
-                    let right_ptr = data.as_mut_ptr().add(y * width + x + 16);
-                    let right_pixels = vld1_u8(right_ptr);
-                    let right_i16 = vmovl_u8(right_pixels);
-                    let error_7_16 = vshrq_n_s16(vmulq_n_s16(error, 7), 4);
-                    let new_right = vqaddq_s16(vreinterpretq_s16_u16(right_i16), error_7_16);
-                    let clamped = vqmovun_s16(new_right);
-                    vst1_u8(right_ptr, clamped);
-                }
-            }
-            x += 16;
-        }
-        
-        // Handle remaining pixels with scalar code
-        while x < width {
-            let idx = y * width + x;
-            let old_pixel = data[idx] as i32;
-            let new_pixel = if old_pixel > 128 { 255 } else { 0 };
-            data[idx] = new_pixel as u8;
+        for y in 0..height {
+            let mut x = 0;
             
-            let error = old_pixel - new_pixel;
-            
-            // Distribute error to neighboring pixels
-            if x + 1 < width {
-                let right_idx = idx + 1;
-                let new_val = (data[right_idx] as i32 + error * 7 / 16).clamp(0, 255);
-                data[right_idx] = new_val as u8;
-            }
-            
-            if y + 1 < height {
-                if x > 0 {
-                    let below_left_idx = (y + 1) * width + x - 1;
-                    let new_val = (data[below_left_idx] as i32 + error * 3 / 16).clamp(0, 255);
-                    data[below_left_idx] = new_val as u8;
+            // Process pixels with NEON where possible
+            while x + 8 <= width {
+                let idx = y * width + x;
+                let ptr = data.as_ptr().add(idx);
+                let pixels = vld1_u8(ptr);
+                
+                // Threshold comparison
+                let mask = vcgt_u8(pixels, threshold);
+                let result = vbsl_u8(mask, vdup_n_u8(255), vdup_n_u8(0));
+                
+                // Store thresholded values
+                let out_ptr = data.as_mut_ptr().add(idx);
+                vst1_u8(out_ptr, result);
+                
+                // Error diffusion (scalar - can't be vectorized easily)
+                // Extract pixels to array first
+                let pixel_array: [u8; 8] = std::mem::transmute(pixels);
+                for i in 0..8 {
+                    let pixel_idx = idx + i;
+                    let old_pixel = pixel_array[i] as i32;
+                    let new_pixel = if old_pixel > 128 { 255 } else { 0 };
+                    let error = old_pixel - new_pixel;
+                    
+                    // Distribute error to neighboring pixels
+                    if x + i + 1 < width {
+                        let right_idx = pixel_idx + 1;
+                        let new_val = (data[right_idx] as i32 + error * 7 / 16).clamp(0, 255);
+                        data[right_idx] = new_val as u8;
+                    }
+                    
+                    if y + 1 < height {
+                        if x + i > 0 {
+                            let below_left_idx = (y + 1) * width + x + i - 1;
+                            let new_val = (data[below_left_idx] as i32 + error * 3 / 16).clamp(0, 255);
+                            data[below_left_idx] = new_val as u8;
+                        }
+                        
+                        let below_idx = (y + 1) * width + x + i;
+                        let new_val = (data[below_idx] as i32 + error * 5 / 16).clamp(0, 255);
+                        data[below_idx] = new_val as u8;
+                        
+                        if x + i + 1 < width {
+                            let below_right_idx = (y + 1) * width + x + i + 1;
+                            let new_val = (data[below_right_idx] as i32 + error * 1 / 16).clamp(0, 255);
+                            data[below_right_idx] = new_val as u8;
+                        }
+                    }
                 }
                 
-                let below_idx = (y + 1) * width + x;
-                let new_val = (data[below_idx] as i32 + error * 5 / 16).clamp(0, 255);
-                data[below_idx] = new_val as u8;
+                x += 8;
+            }
+            
+            // Handle remaining pixels
+            while x < width {
+                let idx = y * width + x;
+                let old_pixel = data[idx] as i32;
+                let new_pixel = if old_pixel > 128 { 255 } else { 0 };
+                data[idx] = new_pixel as u8;
                 
+                let error = old_pixel - new_pixel;
+                
+                // Distribute error to neighboring pixels
                 if x + 1 < width {
-                    let below_right_idx = (y + 1) * width + x + 1;
-                    let new_val = (data[below_right_idx] as i32 + error * 1 / 16).clamp(0, 255);
-                    data[below_right_idx] = new_val as u8;
+                    let right_idx = idx + 1;
+                    let new_val = (data[right_idx] as i32 + error * 7 / 16).clamp(0, 255);
+                    data[right_idx] = new_val as u8;
                 }
+                
+                if y + 1 < height {
+                    if x > 0 {
+                        let below_left_idx = (y + 1) * width + x - 1;
+                        let new_val = (data[below_left_idx] as i32 + error * 3 / 16).clamp(0, 255);
+                        data[below_left_idx] = new_val as u8;
+                    }
+                    
+                    let below_idx = (y + 1) * width + x;
+                    let new_val = (data[below_idx] as i32 + error * 5 / 16).clamp(0, 255);
+                    data[below_idx] = new_val as u8;
+                    
+                    if x + 1 < width {
+                        let below_right_idx = (y + 1) * width + x + 1;
+                        let new_val = (data[below_right_idx] as i32 + error * 1 / 16).clamp(0, 255);
+                        data[below_right_idx] = new_val as u8;
+                    }
+                }
+                
+                x += 1;
             }
-            x += 1;
         }
     }
     
     img
 }
 
-/// Floyd-Steinberg dithering implementation (fallback for non-ARM64)
+/// Fallback Floyd-Steinberg for non-ARM64
 #[cfg(not(target_arch = "aarch64"))]
-fn floyd_steinberg_dither(mut img: GrayImage) -> GrayImage {
+fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
     let width = img.width();
     let height = img.height();
     
@@ -390,88 +397,72 @@ fn floyd_steinberg_dither(mut img: GrayImage) -> GrayImage {
     img
 }
 
-/// Pack 1-bit image data into byte array for e-ink display with NEON optimization
+/// Pack 1-bit image data into byte array for e-ink display with correct NEON optimization
 #[cfg(target_arch = "aarch64")]
 fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8>, DisplayError> {
     let mut output = vec![0u8; (width * height + 7) / 8];
     let data = img.as_raw();
     
-    let mut bit_idx = 0;
-    let mut pixel_idx = 0;
-    
-    // Process 128 pixels at a time using NEON (16 bytes -> 16 bits -> 2 bytes output)
-    while pixel_idx + 128 <= width * height {
-        unsafe {
-            // Load 128 pixels in 8 NEON registers (16 pixels each)
-            let threshold = vdupq_n_u8(128);
-            let mut packed_bits = 0u128;
+    unsafe {
+        let threshold = vdup_n_u8(128);
+        let mut pixel_idx = 0;
+        let mut byte_idx = 0;
+        
+        // Process 8 pixels at a time (1 byte output)
+        while pixel_idx + 8 <= width * height {
+            let pixels = vld1_u8(data.as_ptr().add(pixel_idx));
+            let mask = vcgt_u8(pixels, threshold);
+            
+            // Extract mask values and pack MSB-first
+            // pixel 0 -> bit 7, pixel 1 -> bit 6, etc.
+            let mask_bytes: [u8; 8] = std::mem::transmute(mask);
+            let mut byte_val = 0u8;
             
             for i in 0..8 {
-                let ptr = data.as_ptr().add(pixel_idx + i * 16);
-                let pixels = vld1q_u8(ptr);
-                
-                // Compare with threshold
-                let mask = vcgtq_u8(pixels, threshold);
-                
-                // Extract comparison results as bits
-                // Convert mask to array for bit extraction
-                let mask_bytes = std::mem::transmute::<uint8x16_t, [u8; 16]>(mask);
-                for j in 0..16 {
-                    let bit = (mask_bytes[j] != 0) as u8;
-                    packed_bits |= (bit as u128) << (i * 16 + j);
+                if mask_bytes[i] != 0 {
+                    byte_val |= 1 << (7 - i);  // MSB-first ordering!
                 }
             }
             
-            // Write packed bits to output
-            for i in 0..16 {
-                output[bit_idx / 8 + i] = ((packed_bits >> (i * 8)) & 0xFF) as u8;
+            output[byte_idx] = byte_val;
+            pixel_idx += 8;
+            byte_idx += 1;
+        }
+        
+        // Handle remaining pixels
+        while pixel_idx < width * height {
+            let pixel = data[pixel_idx];
+            if pixel > 128 {
+                let byte_idx = pixel_idx / 8;
+                let bit_pos = 7 - (pixel_idx % 8);  // MSB-first
+                output[byte_idx] |= 1 << bit_pos;
             }
+            pixel_idx += 1;
         }
-        
-        pixel_idx += 128;
-        bit_idx += 128;
-    }
-    
-    // Handle remaining pixels with scalar code
-    while pixel_idx < width * height {
-        let pixel = data[pixel_idx];
-        let bit_value = if pixel > 128 { 1 } else { 0 };
-        
-        let byte_idx = bit_idx / 8;
-        let bit_pos = 7 - (bit_idx % 8);  // MSB first
-        
-        if bit_value == 1 {
-            output[byte_idx] |= 1 << bit_pos;
-        }
-        
-        pixel_idx += 1;
-        bit_idx += 1;
     }
     
     Ok(output)
 }
 
-/// Pack 1-bit image data into byte array for e-ink display (fallback for non-ARM64)
+/// Fallback pack_1bit_data for non-ARM64
 #[cfg(not(target_arch = "aarch64"))]
 fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8>, DisplayError> {
     let mut output = vec![0u8; (width * height + 7) / 8];
     
-    // Use parallel iteration with rayon for better performance
-    output.par_chunks_mut(width / 8).enumerate().for_each(|(y, chunk)| {
-        for x_byte in 0..chunk.len() {
-            let mut byte_val = 0u8;
-            for bit in 0..8 {
-                let x = x_byte * 8 + bit;
-                if x < width {
-                    let pixel = img.get_pixel(x as u32, y as u32)[0];
-                    if pixel > 128 {
-                        byte_val |= 1 << (7 - bit);
-                    }
-                }
+    for y in 0..height {
+        for x in 0..width {
+            let pixel = img.get_pixel(x as u32, y as u32)[0];
+            let bit_value = if pixel > 128 { 1 } else { 0 };
+            
+            let bit_idx = y * width + x;
+            let byte_idx = bit_idx / 8;
+            let bit_pos = 7 - (bit_idx % 8);  // MSB first
+            
+            if bit_value == 1 {
+                output[byte_idx] |= 1 << bit_pos;
             }
-            chunk[x_byte] = byte_val;
         }
-    });
+    }
     
     Ok(output)
 }

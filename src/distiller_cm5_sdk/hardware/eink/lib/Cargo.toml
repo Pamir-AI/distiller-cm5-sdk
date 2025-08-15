@@ -16,7 +16,6 @@ log = "0.4"
 env_logger = "0.11"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "webp", "ico", "pnm", "tga", "dds"] }
 imageproc = "0.25"
-rayon = "1.7"
 
 [dependencies.libc]
 version = "0.2"
