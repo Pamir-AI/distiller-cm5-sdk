@@ -165,12 +165,12 @@ fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
     let in_data = img.as_raw();
     let out_data = output.as_mut();
     
-    unsafe {
-        // Process rows in parallel
-        (0..height).into_par_iter().for_each(|y| {
-            let y_mod = y % 4;
-            let mut x = 0;
-            
+    // Process rows sequentially (can't use par_iter with unsafe mutable access)
+    for y in 0..height {
+        let y_mod = y % 4;
+        let mut x = 0;
+        
+        unsafe {
             // Process 16 pixels at a time with NEON
             while x + 16 <= width {
                 let ptr = in_data.as_ptr().add(y * width + x);
@@ -199,16 +199,16 @@ fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
                 
                 x += 16;
             }
-            
-            // Handle remaining pixels
-            while x < width {
-                let pixel = in_data[y * width + x];
-                let threshold = BAYER_MATRIX_4X4[y_mod][x % 4] * 16;
-                let value = if pixel.saturating_add(threshold) > 128 { 255 } else { 0 };
-                out_data[y * width + x] = value;
-                x += 1;
-            }
-        });
+        }
+        
+        // Handle remaining pixels
+        while x < width {
+            let pixel = in_data[y * width + x];
+            let threshold = BAYER_MATRIX_4X4[y_mod][x % 4] * 16;
+            let value = if pixel.saturating_add(threshold) > 128 { 255 } else { 0 };
+            out_data[y * width + x] = value;
+            x += 1;
+        }
     }
     
     output
@@ -413,7 +413,7 @@ fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8
                 // Extract comparison results as bits
                 // This is simplified - actual implementation would use vget_lane and bit manipulation
                 for j in 0..16 {
-                    let bit = vgetq_lane_u8(mask, j) & 1;
+                    let bit = vgetq_lane_u8(mask, j as i32) & 1;
                     packed_bits |= (bit as u128) << (i * 16 + j);
                 }
             }

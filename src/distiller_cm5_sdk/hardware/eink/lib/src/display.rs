@@ -170,13 +170,14 @@ pub fn display_init() -> Result<(), DisplayError> {
 
     if state.display.is_none() {
         let protocol = create_default_protocol()?;
+        
+        // Get buffer size from protocol spec before moving it
+        let buffer_size = protocol.get_spec().array_size() * 2;  // Double size for processing
+        
         let mut display = DefaultDisplay::new(protocol);
         display.init()?;
         
         // Initialize buffer pool with appropriate size for the display
-        let buffer_size = match protocol.get_spec() {
-            spec => spec.array_size() * 2,  // Double size for processing
-        };
         state.ensure_buffer_pool(buffer_size);
         
         state.display = Some(display);

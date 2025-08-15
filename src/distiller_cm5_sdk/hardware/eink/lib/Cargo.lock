@@ -350,6 +350,7 @@ dependencies = [
  "libc",
  "lodepng",
  "log",
+ "rayon",
  "spidev",
  "thiserror 2.0.12",
 ]
