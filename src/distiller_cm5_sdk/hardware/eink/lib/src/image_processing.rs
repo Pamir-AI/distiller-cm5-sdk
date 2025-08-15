@@ -253,19 +253,32 @@ fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
     let height = img.height() as usize;
     let data = img.as_mut();
     
+    // Pre-process: Apply contrast boost for crisper output
+    // Formula: pixel = ((pixel - 128) * 1.3 + 128).clamp(0, 255)
+    for i in 0..data.len() {
+        let pixel = data[i] as f32;
+        let adjusted = ((pixel - 128.0) * 1.3 + 128.0).clamp(0.0, 255.0);
+        data[i] = adjusted as u8;
+    }
+    
     unsafe {
-        let threshold = vdup_n_u8(128);
+        // Lower threshold for bolder output (115 instead of 128)
+        let threshold = vdup_n_u8(115);
         
         for y in 0..height {
-            let mut x = 0;
+            // Serpentine scanning: alternate direction each row
+            let reverse_row = y % 2 == 1;
             
-            // Process pixels with NEON where possible
-            while x + 8 <= width {
+            if !reverse_row {
+                // Left to right for even rows
+                let mut x = 0;
+                while x + 8 <= width {
                 let idx = y * width + x;
                 let ptr = data.as_ptr().add(idx);
                 let pixels = vld1_u8(ptr);
                 
                 // Threshold comparison
+                // Compare with lower threshold (115) for bolder output
                 let mask = vcgt_u8(pixels, threshold);
                 let result = vbsl_u8(mask, vdup_n_u8(255), vdup_n_u8(0));
                 
@@ -279,20 +292,23 @@ fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
                 for i in 0..8 {
                     let pixel_idx = idx + i;
                     let old_pixel = pixel_array[i] as i32;
-                    let new_pixel = if old_pixel > 128 { 255 } else { 0 };
-                    let error = old_pixel - new_pixel;
+                    let new_pixel = if old_pixel > 115 { 255 } else { 0 };
+                    // Clamp error to prevent excessive accumulation
+                    let error = (old_pixel - new_pixel).clamp(-100, 100);
                     
                     // Distribute error to neighboring pixels
                     if x + i + 1 < width {
                         let right_idx = pixel_idx + 1;
-                        let new_val = (data[right_idx] as i32 + error * 7 / 16).clamp(0, 255);
+                        // Reduced error to right (6/16 instead of 7/16) for crisper edges
+                        let new_val = (data[right_idx] as i32 + error * 6 / 16).clamp(0, 255);
                         data[right_idx] = new_val as u8;
                     }
                     
                     if y + 1 < height {
                         if x + i > 0 {
                             let below_left_idx = (y + 1) * width + x + i - 1;
-                            let new_val = (data[below_left_idx] as i32 + error * 3 / 16).clamp(0, 255);
+                            // Reduced error to bottom-left (2/16 instead of 3/16)
+                        let new_val = (data[below_left_idx] as i32 + error * 2 / 16).clamp(0, 255);
                             data[below_left_idx] = new_val as u8;
                         }
                         
@@ -311,26 +327,29 @@ fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
                 x += 8;
             }
             
-            // Handle remaining pixels
-            while x < width {
-                let idx = y * width + x;
-                let old_pixel = data[idx] as i32;
-                let new_pixel = if old_pixel > 128 { 255 } else { 0 };
-                data[idx] = new_pixel as u8;
-                
-                let error = old_pixel - new_pixel;
+                // Handle remaining pixels for forward scan
+                while x < width {
+                    let idx = y * width + x;
+                    let old_pixel = data[idx] as i32;
+                    let new_pixel = if old_pixel > 115 { 255 } else { 0 };
+                    data[idx] = new_pixel as u8;
+                    
+                    // Clamp error
+                    let error = (old_pixel - new_pixel).clamp(-100, 100);
                 
                 // Distribute error to neighboring pixels
                 if x + 1 < width {
                     let right_idx = idx + 1;
-                    let new_val = (data[right_idx] as i32 + error * 7 / 16).clamp(0, 255);
+                    // Reduced error to right
+                    let new_val = (data[right_idx] as i32 + error * 6 / 16).clamp(0, 255);
                     data[right_idx] = new_val as u8;
                 }
                 
                 if y + 1 < height {
                     if x > 0 {
                         let below_left_idx = (y + 1) * width + x - 1;
-                        let new_val = (data[below_left_idx] as i32 + error * 3 / 16).clamp(0, 255);
+                        // Reduced error to bottom-left (2/16 instead of 3/16)
+                        let new_val = (data[below_left_idx] as i32 + error * 2 / 16).clamp(0, 255);
                         data[below_left_idx] = new_val as u8;
                     }
                     
@@ -344,8 +363,48 @@ fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
                         data[below_right_idx] = new_val as u8;
                     }
                 }
-                
-                x += 1;
+                    
+                    x += 1;
+                }
+            } else {
+                // Right to left for odd rows (serpentine)
+                let mut x = width as i32 - 1;
+                while x >= 0 {
+                    let idx = y * width + x as usize;
+                    let old_pixel = data[idx] as i32;
+                    let new_pixel = if old_pixel > 115 { 255 } else { 0 };
+                    data[idx] = new_pixel as u8;
+                    
+                    // Clamp error
+                    let error = (old_pixel - new_pixel).clamp(-100, 100);
+                    
+                    // Distribute error (mirrored for reverse scan)
+                    if x > 0 {
+                        let left_idx = idx - 1;
+                        let new_val = (data[left_idx] as i32 + error * 6 / 16).clamp(0, 255);
+                        data[left_idx] = new_val as u8;
+                    }
+                    
+                    if y + 1 < height {
+                        if x < width as i32 - 1 {
+                            let below_right_idx = (y + 1) * width + x as usize + 1;
+                            let new_val = (data[below_right_idx] as i32 + error * 2 / 16).clamp(0, 255);
+                            data[below_right_idx] = new_val as u8;
+                        }
+                        
+                        let below_idx = (y + 1) * width + x as usize;
+                        let new_val = (data[below_idx] as i32 + error * 5 / 16).clamp(0, 255);
+                        data[below_idx] = new_val as u8;
+                        
+                        if x > 0 {
+                            let below_left_idx = (y + 1) * width + x as usize - 1;
+                            let new_val = (data[below_left_idx] as i32 + error * 1 / 16).clamp(0, 255);
+                            data[below_left_idx] = new_val as u8;
+                        }
+                    }
+                    
+                    x -= 1;
+                }
             }
         }
     }
@@ -359,36 +418,87 @@ fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
     let width = img.width();
     let height = img.height();
     
+    // Pre-process: Apply contrast boost for crisper output
     for y in 0..height {
         for x in 0..width {
-            let old_pixel = img.get_pixel(x, y)[0] as i32;
-            let new_pixel = if old_pixel > 128 { 255 } else { 0 };
-            img.put_pixel(x, y, Luma([new_pixel as u8]));
-            
-            let error = old_pixel - new_pixel;
-            
-            // Distribute error to neighboring pixels
-            if x + 1 < width {
-                let pixel = img.get_pixel(x + 1, y)[0] as i32;
-                let new_val = (pixel + error * 7 / 16).clamp(0, 255);
-                img.put_pixel(x + 1, y, Luma([new_val as u8]));
-            }
-            
-            if y + 1 < height {
-                if x > 0 {
-                    let pixel = img.get_pixel(x - 1, y + 1)[0] as i32;
-                    let new_val = (pixel + error * 3 / 16).clamp(0, 255);
-                    img.put_pixel(x - 1, y + 1, Luma([new_val as u8]));
+            let pixel = img.get_pixel(x, y)[0] as f32;
+            let adjusted = ((pixel - 128.0) * 1.3 + 128.0).clamp(0.0, 255.0);
+            img.put_pixel(x, y, Luma([adjusted as u8]));
+        }
+    }
+    
+    for y in 0..height {
+        // Serpentine scanning
+        let reverse_row = y % 2 == 1;
+        
+        if !reverse_row {
+            // Left to right
+            for x in 0..width {
+                let old_pixel = img.get_pixel(x, y)[0] as i32;
+                let new_pixel = if old_pixel > 115 { 255 } else { 0 };
+                img.put_pixel(x, y, Luma([new_pixel as u8]));
+                
+                // Clamp error
+                let error = (old_pixel - new_pixel).clamp(-100, 100);
+                
+                // Distribute error to neighboring pixels
+                if x + 1 < width {
+                    let pixel = img.get_pixel(x + 1, y)[0] as i32;
+                    let new_val = (pixel + error * 6 / 16).clamp(0, 255);
+                    img.put_pixel(x + 1, y, Luma([new_val as u8]));
                 }
                 
-                let pixel = img.get_pixel(x, y + 1)[0] as i32;
-                let new_val = (pixel + error * 5 / 16).clamp(0, 255);
-                img.put_pixel(x, y + 1, Luma([new_val as u8]));
+                if y + 1 < height {
+                    if x > 0 {
+                        let pixel = img.get_pixel(x - 1, y + 1)[0] as i32;
+                        let new_val = (pixel + error * 2 / 16).clamp(0, 255);
+                        img.put_pixel(x - 1, y + 1, Luma([new_val as u8]));
+                    }
+                    
+                    let pixel = img.get_pixel(x, y + 1)[0] as i32;
+                    let new_val = (pixel + error * 5 / 16).clamp(0, 255);
+                    img.put_pixel(x, y + 1, Luma([new_val as u8]));
+                    
+                    if x + 1 < width {
+                        let pixel = img.get_pixel(x + 1, y + 1)[0] as i32;
+                        let new_val = (pixel + error * 1 / 16).clamp(0, 255);
+                        img.put_pixel(x + 1, y + 1, Luma([new_val as u8]));
+                    }
+                }
+            }
+        } else {
+            // Right to left for odd rows
+            for x in (0..width).rev() {
+                let old_pixel = img.get_pixel(x, y)[0] as i32;
+                let new_pixel = if old_pixel > 115 { 255 } else { 0 };
+                img.put_pixel(x, y, Luma([new_pixel as u8]));
                 
-                if x + 1 < width {
-                    let pixel = img.get_pixel(x + 1, y + 1)[0] as i32;
-                    let new_val = (pixel + error * 1 / 16).clamp(0, 255);
-                    img.put_pixel(x + 1, y + 1, Luma([new_val as u8]));
+                // Clamp error
+                let error = (old_pixel - new_pixel).clamp(-100, 100);
+                
+                // Distribute error (mirrored for reverse)
+                if x > 0 {
+                    let pixel = img.get_pixel(x - 1, y)[0] as i32;
+                    let new_val = (pixel + error * 6 / 16).clamp(0, 255);
+                    img.put_pixel(x - 1, y, Luma([new_val as u8]));
+                }
+                
+                if y + 1 < height {
+                    if x < width - 1 {
+                        let pixel = img.get_pixel(x + 1, y + 1)[0] as i32;
+                        let new_val = (pixel + error * 2 / 16).clamp(0, 255);
+                        img.put_pixel(x + 1, y + 1, Luma([new_val as u8]));
+                    }
+                    
+                    let pixel = img.get_pixel(x, y + 1)[0] as i32;
+                    let new_val = (pixel + error * 5 / 16).clamp(0, 255);
+                    img.put_pixel(x, y + 1, Luma([new_val as u8]));
+                    
+                    if x > 0 {
+                        let pixel = img.get_pixel(x - 1, y + 1)[0] as i32;
+                        let new_val = (pixel + error * 1 / 16).clamp(0, 255);
+                        img.put_pixel(x - 1, y + 1, Luma([new_val as u8]));
+                    }
                 }
             }
         }
