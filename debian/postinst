@@ -73,6 +73,10 @@ EOF
 abort-upgrade | abort-remove | abort-deconfigure)
 	;;
 
+triggered)
+	# Handle trigger activation - no action needed since main setup is done in configure
+	;;
+
 *)
 	echo "postinst called with unknown argument \`$1'" >&2
 	exit 1
