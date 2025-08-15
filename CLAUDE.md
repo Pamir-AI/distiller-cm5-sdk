@@ -8,16 +8,7 @@ Distiller CM5 SDK is a Python SDK for hardware control and AI capabilities on AR
 
 ## Common Development Commands
 
-### Package Management
-```bash
-# Add/remove dependencies (use uv, not pip)
-uv add <package>
-uv remove <package>
-uv sync                    # Update all packages
-uv tree                    # Show dependency tree
-```
-
-### Building and Testing
+### Building and Package Management
 ```bash
 # Download AI models (required before building)
 ./build.sh                 # Standard models only
@@ -28,8 +19,35 @@ uv tree                    # Show dependency tree
 ./build-deb.sh clean       # Clean previous builds
 ./build-deb.sh whisper     # Build with Whisper models
 
-# Run tests
+# Add/remove dependencies (use uv, not pip)
+uv add <package>
+uv remove <package>
+uv sync                    # Update all packages
+uv tree                    # Show dependency tree
+```
+
+### Testing
+```bash
+# Run unit tests
 python -m pytest tests/ -v
+
+# Run specific test modules
+python src/distiller_cm5_sdk/hardware/audio/_audio_test.py
+python src/distiller_cm5_sdk/hardware/camera/_camera_unit_test.py
+python src/distiller_cm5_sdk/hardware/eink/_display_test.py
+
+# Integration tests
+python tests/integration/*.py
+```
+
+### Linting and Type Checking
+```bash
+# Run ruff linter (configured in pyproject.toml)
+ruff check src/
+ruff format src/
+
+# Type checking (if mypy is available)
+mypy src/distiller_cm5_sdk/
 ```
 
 ### Installation (Production)
@@ -42,40 +60,56 @@ source /opt/distiller-cm5-sdk/activate.sh
 ## Code Architecture
 
 ### Directory Structure
-The SDK installs to `/opt/distiller-cm5-sdk/` with this structure:
-- `distiller_cm5_sdk/` - Main Python modules
-  - `hardware/` - Hardware control (audio, camera, eink, sam/LED)
-  - `parakeet/` - Parakeet ASR with VAD
-  - `piper/` - Piper TTS
-  - `whisper/` - Whisper ASR (optional)
-- `models/` - AI model files
-- `lib/` - Native libraries (.so files)
-- `venv/` - Python 3.11 virtual environment
+```
+distiller-cm5-sdk/
+├── src/distiller_cm5_sdk/       # Main SDK source
+│   ├── hardware/                # Hardware control modules
+│   │   ├── audio/               # Audio capture/playback (ALSA)
+│   │   ├── camera/              # Camera control (V4L2/OpenCV)
+│   │   ├── eink/                # E-ink display (Rust library + Python)
+│   │   │   └── lib/             # Rust source and Makefile
+│   │   └── sam/                 # LED control (I2C/SPI)
+│   ├── parakeet/                # Parakeet ASR with VAD
+│   ├── piper/                   # Piper TTS engine
+│   └── whisper/                 # Whisper ASR (optional)
+├── debian/                      # Debian packaging files
+├── tests/                       # Test suites
+│   ├── integration/             # Integration tests
+│   └── stress/                  # Stress tests
+├── build.sh                     # Model download script
+├── build-deb.sh                 # Debian package builder
+└── pyproject.toml               # Python package configuration
+```
 
 ### Key Architectural Patterns
 
 1. **Model Path Resolution**: The SDK uses a priority system for finding models:
-   - Development: Looks in local `models/` directory
+   - Development: Looks in local `src/distiller_cm5_sdk/*/models/` directory
    - Production: Uses `/opt/distiller-cm5-sdk/models/`
    - Falls back to downloading if missing
 
 2. **Hardware Abstraction**: Each hardware component has its own module with error handling and resource cleanup:
    - Audio: ALSA-based with configurable gain/volume
    - Camera: V4L2 support with OpenCV integration
-   - E-ink: Rust-based SPI driver with multiple firmware support
+   - E-ink: Rust-based SPI driver with multiple firmware support (EPD128x250, EPD240x416)
    - LED: I2C/SPI controllers via SAM module
 
 3. **Configuration Priority**: Environment variables → Config files → Defaults
+   - E-ink firmware: `DISTILLER_EINK_FIRMWARE` env var or `/opt/distiller-cm5-sdk/eink.conf`
 
-4. **Native Library Integration**: Rust-based e-ink driver compiled to `.so` and loaded via ctypes
+4. **Native Library Integration**: 
+   - Rust-based e-ink driver compiled to `libdistiller_display_sdk_shared.so`
+   - Built using `src/distiller_cm5_sdk/hardware/eink/lib/Makefile.rust`
+   - Loaded via ctypes in Python
 
 ### Important Technical Details
 
 - **Python Version**: Requires Python 3.11+
 - **Package Manager**: Uses `uv` (not pip) for dependency management
-- **Target Platform**: ARM64 Linux only
+- **Target Platform**: ARM64 Linux only (aarch64)
 - **Build System**: Debian packaging with debhelper
 - **CI/CD**: GitHub Actions workflow on ARM64 runners for releases
+- **Dependencies**: See `pyproject.toml` for Python deps, `debian/control` for system deps
 
 ### Development Notes
 
@@ -85,3 +119,23 @@ The SDK installs to `/opt/distiller-cm5-sdk/` with this structure:
 - The SDK is designed to be self-contained with its own virtual environment
 - Hardware modules include comprehensive error handling and resource cleanup
 - Test files are located within module directories (e.g., `hardware/audio/_audio_test.py`)
+- The package version is in `pyproject.toml` and `debian/changelog`
+
+### E-ink Display Configuration
+
+The e-ink module supports multiple display types with automatic firmware detection:
+- **EPD128x250**: 128×250 pixels (default for backward compatibility)
+- **EPD240x416**: 240×416 pixels
+
+Configuration methods (in priority order):
+1. Environment variable: `export DISTILLER_EINK_FIRMWARE="EPD240x416"`
+2. Config file: `/opt/distiller-cm5-sdk/eink.conf`
+3. Programmatic: `set_default_firmware(FirmwareType.EPD240x416)`
+
+### Release Process
+
+1. Update version in `pyproject.toml`
+2. Update `debian/changelog` with new version
+3. Tag the release: `git tag v0.2.0`
+4. Push tags: `git push origin v0.2.0`
+5. GitHub Actions will automatically build and create a release
