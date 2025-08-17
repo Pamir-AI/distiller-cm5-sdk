@@ -34,6 +34,11 @@ override_dh_auto_install:
 		cp requirements.txt $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/; \
 	fi
 	
+	# Copy eink configuration file
+	if [ -f eink.conf ]; then \
+		cp eink.conf $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/; \
+	fi
+	
 	# Copy model files
 	cp -r src/distiller_cm5_sdk/parakeet/models $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/models/parakeet/
 	cp -r src/distiller_cm5_sdk/piper/models $(CURDIR)/debian/distiller-cm5-sdk/opt/distiller-cm5-sdk/models/piper/
