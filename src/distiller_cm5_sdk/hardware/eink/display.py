@@ -20,32 +20,37 @@ from PIL import Image
 
 class DisplayError(Exception):
     """Custom exception for Display-related errors."""
+
     pass
 
 
 class DisplayMode(IntEnum):
     """Display refresh modes."""
-    FULL = 0      # Full refresh - slow but high quality
-    PARTIAL = 1   # Partial refresh - fast updates
+
+    FULL = 0  # Full refresh - slow but high quality
+    PARTIAL = 1  # Partial refresh - fast updates
 
 
 class FirmwareType(Enum):
     """Supported e-ink display firmware types."""
+
     EPD128x250 = "EPD128x250"
     EPD240x416 = "EPD240x416"
 
 
 class ScalingMethod(IntEnum):
     """Image scaling methods for auto-conversion."""
-    LETTERBOX = 0     # Maintain aspect ratio, add black borders
-    CROP_CENTER = 1   # Center crop to fill display
-    STRETCH = 2       # Stretch to fill display (may distort)
+
+    LETTERBOX = 0  # Maintain aspect ratio, add black borders
+    CROP_CENTER = 1  # Center crop to fill display
+    STRETCH = 2  # Stretch to fill display (may distort)
 
 
 class DitheringMethod(IntEnum):
     """Dithering methods for 1-bit conversion."""
+
     FLOYD_STEINBERG = 0  # High quality dithering
-    SIMPLE = 1           # Fast threshold conversion
+    SIMPLE = 1  # Fast threshold conversion
 
 
 class ImageCacheManager:
@@ -77,8 +82,9 @@ class ImageCacheManager:
             self._load_cache_from_json(persist_path)
 
         # Use weakref finalizer instead of atexit to avoid circular references
-        self._finalizer = weakref.finalize(self, self._cleanup_static,
-                                          list(self._temp_files.values()))
+        self._finalizer = weakref.finalize(
+            self, self._cleanup_static, list(self._temp_files.values())
+        )
 
     def _load_cache_from_json(self, persist_path: str) -> None:
         """Load cache from JSON file with validation."""
@@ -90,20 +96,20 @@ class ImageCacheManager:
                 if not isinstance(saved_cache, dict):
                     return
 
-                cache_version = saved_cache.get('version', 0)
+                cache_version = saved_cache.get("version", 0)
                 if cache_version != 1:  # Current cache version
                     return
 
-                entries = saved_cache.get('entries', {})
+                entries = saved_cache.get("entries", {})
                 for key, entry in entries.items():
                     # Validate entry structure
                     if not self._validate_cache_entry(entry):
                         continue
 
                     # Check if temp file still exists
-                    if 'temp_path' in entry and os.path.exists(entry['temp_path']):
+                    if "temp_path" in entry and os.path.exists(entry["temp_path"]):
                         self._cache[key] = entry
-                        self._temp_files[key] = entry['temp_path']
+                        self._temp_files[key] = entry["temp_path"]
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             print(f"Warning: Could not load cache from {persist_path}: {e}")
 
@@ -112,12 +118,12 @@ class ImageCacheManager:
         if not isinstance(entry, dict):
             return False
 
-        required_keys = ['temp_path', 'source_path', 'params']
+        required_keys = ["temp_path", "source_path", "params"]
         if not all(key in entry for key in required_keys):
             return False
 
         # Validate temp_path is within allowed directory
-        temp_path = entry.get('temp_path', '')
+        temp_path = entry.get("temp_path", "")
         if not temp_path.startswith(tempfile.gettempdir()):
             return False
 
@@ -133,9 +139,18 @@ class ImageCacheManager:
             except OSError:
                 pass
 
-    def _generate_cache_key(self, image_path: str, display_width: int, display_height: int,
-                           scaling: int, dithering: int, rotate: bool, flop: bool,
-                           crop_x: int | None, crop_y: int | None) -> str:
+    def _generate_cache_key(
+        self,
+        image_path: str,
+        display_width: int,
+        display_height: int,
+        scaling: int,
+        dithering: int,
+        rotate: bool,
+        flop: bool,
+        crop_x: int | None,
+        crop_y: int | None,
+    ) -> str:
         """Generate a unique cache key for the conversion parameters."""
         # Get file modification time for cache invalidation
         try:
@@ -149,25 +164,34 @@ class ImageCacheManager:
 
         # Create a unique key from all parameters
         key_data = {
-            'path': image_path,
-            'mtime': mtime,
-            'width': display_width,
-            'height': display_height,
-            'scaling': scaling,
-            'dithering': dithering,
-            'rotate': rotate,
-            'flop': flop,
-            'crop_x': crop_x,
-            'crop_y': crop_y
+            "path": image_path,
+            "mtime": mtime,
+            "width": display_width,
+            "height": display_height,
+            "scaling": scaling,
+            "dithering": dithering,
+            "rotate": rotate,
+            "flop": flop,
+            "crop_x": crop_x,
+            "crop_y": crop_y,
         }
 
         # Generate hash of the key data
         key_str = json.dumps(key_data, sort_keys=True)
         return hashlib.sha256(key_str.encode()).hexdigest()
 
-    def get(self, image_path: str, display_width: int, display_height: int,
-            scaling: int, dithering: int, rotate: bool, flop: bool,
-            crop_x: int | None, crop_y: int | None) -> str | None:
+    def get(
+        self,
+        image_path: str,
+        display_width: int,
+        display_height: int,
+        scaling: int,
+        dithering: int,
+        rotate: bool,
+        flop: bool,
+        crop_x: int | None,
+        crop_y: int | None,
+    ) -> str | None:
         """
         Get cached converted image path if available. Thread-safe.
 
@@ -175,17 +199,26 @@ class ImageCacheManager:
             Path to cached temporary file, or None if not cached
         """
         with self._lock:
-            key = self._generate_cache_key(image_path, display_width, display_height,
-                                          scaling, dithering, rotate, flop, crop_x, crop_y)
+            key = self._generate_cache_key(
+                image_path,
+                display_width,
+                display_height,
+                scaling,
+                dithering,
+                rotate,
+                flop,
+                crop_x,
+                crop_y,
+            )
 
             if key in self._cache:
                 entry = self._cache[key]
                 # Verify the temp file still exists
-                if os.path.exists(entry['temp_path']):
+                if os.path.exists(entry["temp_path"]):
                     # Move to end (most recently used)
                     self._cache.pop(key)
                     self._cache[key] = entry
-                    return entry['temp_path']
+                    return entry["temp_path"]
                 else:
                     # Clean up invalid entry
                     self._cache.pop(key, None)
@@ -193,9 +226,19 @@ class ImageCacheManager:
 
             return None
 
-    def put(self, image_path: str, display_width: int, display_height: int,
-            scaling: int, dithering: int, rotate: bool, flop: bool,
-            crop_x: int | None, crop_y: int | None, temp_path: str) -> None:
+    def put(
+        self,
+        image_path: str,
+        display_width: int,
+        display_height: int,
+        scaling: int,
+        dithering: int,
+        rotate: bool,
+        flop: bool,
+        crop_x: int | None,
+        crop_y: int | None,
+        temp_path: str,
+    ) -> None:
         """
         Store converted image in cache. Thread-safe.
 
@@ -207,8 +250,17 @@ class ImageCacheManager:
             if not temp_path.startswith(tempfile.gettempdir()):
                 raise ValueError(f"Invalid temp path: {temp_path}")
 
-            key = self._generate_cache_key(image_path, display_width, display_height,
-                                          scaling, dithering, rotate, flop, crop_x, crop_y)
+            key = self._generate_cache_key(
+                image_path,
+                display_width,
+                display_height,
+                scaling,
+                dithering,
+                rotate,
+                flop,
+                crop_x,
+                crop_y,
+            )
 
             # Enforce max size (remove oldest entries)
             while len(self._cache) >= self.max_size:
@@ -218,26 +270,27 @@ class ImageCacheManager:
 
             # Add new entry
             self._cache[key] = {
-                'temp_path': temp_path,
-                'source_path': image_path,
-                'params': {
-                    'width': display_width,
-                    'height': display_height,
-                    'scaling': scaling,
-                    'dithering': dithering,
-                    'rotate': rotate,
-                    'flop': flop,
-                    'crop_x': crop_x,
-                    'crop_y': crop_y
-                }
+                "temp_path": temp_path,
+                "source_path": image_path,
+                "params": {
+                    "width": display_width,
+                    "height": display_height,
+                    "scaling": scaling,
+                    "dithering": dithering,
+                    "rotate": rotate,
+                    "flop": flop,
+                    "crop_x": crop_x,
+                    "crop_y": crop_y,
+                },
             }
             self._temp_files[key] = temp_path
 
             # Update finalizer with new temp files list
             if self._finalizer:
                 self._finalizer.detach()
-            self._finalizer = weakref.finalize(self, self._cleanup_static,
-                                              list(self._temp_files.values()))
+            self._finalizer = weakref.finalize(
+                self, self._cleanup_static, list(self._temp_files.values())
+            )
 
             # Persist cache if configured
             self._persist()
@@ -281,10 +334,10 @@ class ImageCacheManager:
                     pass
 
             return {
-                'entries': len(self._cache),
-                'max_size': self.max_size,
-                'total_bytes': total_size,
-                'persist_enabled': self.persist_path is not None
+                "entries": len(self._cache),
+                "max_size": self.max_size,
+                "total_bytes": total_size,
+                "persist_enabled": self.persist_path is not None,
             }
 
     def _persist(self) -> None:
@@ -299,13 +352,10 @@ class ImageCacheManager:
                 os.makedirs(cache_dir, exist_ok=True)
 
             # Prepare cache data for JSON serialization
-            cache_data = {
-                'version': 1,
-                'entries': self._cache
-            }
+            cache_data = {"version": 1, "entries": self._cache}
 
             # Save cache as JSON
-            with open(self.persist_path, 'w') as f:
+            with open(self.persist_path, "w") as f:
                 json.dump(cache_data, f, indent=2)
         except (OSError, TypeError) as e:
             print(f"Warning: Could not persist cache to {self.persist_path}: {e}")
@@ -338,10 +388,10 @@ class Display:
     Thread-safe implementation with singleton pattern option.
     """
 
-    # Display constants (will be updated dynamically)
-    WIDTH = 128  # Default, will be updated after initialization
-    HEIGHT = 250  # Default, will be updated after initialization
-    ARRAY_SIZE = (128 * 250) // 8  # Default, will be updated after initialization
+    # Display constants - must be configured before use
+    WIDTH = None  # Must be set from configuration
+    HEIGHT = None  # Must be set from configuration
+    ARRAY_SIZE = None  # Must be set from configuration
 
     # Shared resources with thread safety
     _cache_manager: ImageCacheManager | None = None
@@ -355,10 +405,15 @@ class Display:
         "/opt/distiller-cm5-sdk",
     ]
 
-    def __init__(self, library_path: str | None = None, auto_init: bool = True,
-                 enable_cache: bool = True, cache_size: int = 100,
-                 cache_persist_path: str | None = None,
-                 allowed_dirs: list[str] | None = None):
+    def __init__(
+        self,
+        library_path: str | None = None,
+        auto_init: bool = True,
+        enable_cache: bool = True,
+        cache_size: int = 100,
+        cache_persist_path: str | None = None,
+        allowed_dirs: list[str] | None = None,
+    ):
         """
         Initialize the Display object.
 
@@ -390,8 +445,7 @@ class Display:
                         cache_persist_path = os.path.join(cache_dir, "image_cache.json")
 
                     Display._cache_manager = ImageCacheManager(
-                        max_size=cache_size,
-                        persist_path=cache_persist_path
+                        max_size=cache_size, persist_path=cache_persist_path
                     )
 
         # Find and load the shared library
@@ -436,8 +490,8 @@ class Display:
                 return abs_path
 
         raise DisplayError(
-            "Could not find libdistiller_display_sdk_shared.so in any of these locations:\n" +
-            "\n".join(f"  - {path}" for path in search_paths)
+            "Could not find libdistiller_display_sdk_shared.so in any of these locations:\n"
+            + "\n".join(f"  - {path}" for path in search_paths)
         )
 
     def _setup_function_signatures(self):
@@ -499,9 +553,14 @@ class Display:
             # process_image_auto(filename, output_data, scaling, dithering, rotate, flip, crop_x, crop_y) -> bool
             self._lib.process_image_auto.restype = c_bool
             self._lib.process_image_auto.argtypes = [
-                c_char_p, ctypes.POINTER(ctypes.c_ubyte),
-                ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                ctypes.c_int, ctypes.c_int
+                c_char_p,
+                ctypes.POINTER(ctypes.c_ubyte),
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
             ]
 
             # is_image_format_supported(filename) -> bool
@@ -527,15 +586,15 @@ class Display:
         if self._initialized:
             return
 
-        # Initialize configuration system first (if available)
-        if hasattr(self, '_config_available') and self._config_available:
-            try:
-                config_success = self._lib.display_initialize_config()
-                if not config_success:
-                    # Config initialization failed, but continue with defaults
-                    print("Warning: Failed to initialize config system, using defaults")
-            except Exception as e:
-                print(f"Warning: Config system error: {e}")
+        # Initialize configuration system first (required)
+        if hasattr(self, "_config_available") and self._config_available:
+            config_success = self._lib.display_initialize_config()
+            if not config_success:
+                raise DisplayError(
+                    "Failed to initialize display configuration. "
+                    "Set DISTILLER_EINK_FIRMWARE environment variable to "
+                    "'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+                )
 
         success = self._lib.display_init()
         if not success:
@@ -558,12 +617,19 @@ class Display:
             self.HEIGHT = height_ptr.contents.value
             self.ARRAY_SIZE = (self.WIDTH * self.HEIGHT) // 8
 
+            # Also update class variables if they were None
+            if Display.WIDTH is None:
+                Display.WIDTH = self.WIDTH
+                Display.HEIGHT = self.HEIGHT
+                Display.ARRAY_SIZE = self.ARRAY_SIZE
+
         except (AttributeError, TypeError, OSError) as e:
-            # Use class defaults if library call fails
-            self.WIDTH = Display.WIDTH
-            self.HEIGHT = Display.HEIGHT
-            self.ARRAY_SIZE = Display.ARRAY_SIZE
-            print(f"Warning: Could not get dimensions from library: {e}")
+            # Fail-fast: no fallback to defaults
+            raise DisplayError(
+                f"Failed to get display dimensions from library: {e}. "
+                "Ensure DISTILLER_EINK_FIRMWARE environment variable is set to "
+                "'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+            )
 
     def get_dimensions(self) -> tuple[int, int]:
         """
@@ -571,6 +637,9 @@ class Display:
 
         Returns:
             Tuple of (width, height) in pixels
+
+        Raises:
+            DisplayError: If dimensions are not configured
         """
         if not self._initialized:
             # Try to get dimensions without initializing
@@ -579,7 +648,13 @@ class Display:
                 height_ptr = ctypes.pointer(c_uint32())
                 self._lib.display_get_dimensions(width_ptr, height_ptr)
                 return (width_ptr.contents.value, height_ptr.contents.value)
-            except (AttributeError, TypeError, OSError):
+            except (AttributeError, TypeError, OSError) as e:
+                if self.WIDTH is None or self.HEIGHT is None:
+                    raise DisplayError(
+                        "Display dimensions not configured. "
+                        "Set DISTILLER_EINK_FIRMWARE environment variable to "
+                        "'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+                    )
                 return (self.WIDTH, self.HEIGHT)
         return (self.WIDTH, self.HEIGHT)
 
@@ -614,7 +689,16 @@ class Display:
         if not path_allowed:
             raise DisplayError(f"Path outside allowed directories: {path}")
 
-    def display_image(self, image: str | bytes, mode: DisplayMode = DisplayMode.FULL, rotate: bool = False, flip_horizontal: bool = False, invert_colors: bool = False, src_width: int = None, src_height: int = None) -> None:
+    def display_image(
+        self,
+        image: str | bytes,
+        mode: DisplayMode = DisplayMode.FULL,
+        rotate: bool = False,
+        flip_horizontal: bool = False,
+        invert_colors: bool = False,
+        src_width: int = None,
+        src_height: int = None,
+    ) -> None:
         """
         Display an image on the e-ink screen.
 
@@ -644,7 +728,9 @@ class Display:
 
             if flip_horizontal or rotate or invert_colors:
                 if src_width is None or src_height is None:
-                    raise DisplayError("src_width and src_height are required when transforming raw data")
+                    raise DisplayError(
+                        "src_width and src_height are required when transforming raw data"
+                    )
 
                 # Apply transformations in DistillerGUI order: flip, rotate, then invert colors
                 if flip_horizontal:
@@ -661,7 +747,14 @@ class Display:
         else:
             raise DisplayError(f"Invalid image type: {type(image)}. Expected str or bytes.")
 
-    def _display_png(self, filename: str, mode: DisplayMode, rotate: bool = False, flip_horizontal: bool = False, invert_colors: bool = False) -> None:
+    def _display_png(
+        self,
+        filename: str,
+        mode: DisplayMode,
+        rotate: bool = False,
+        flip_horizontal: bool = False,
+        invert_colors: bool = False,
+    ) -> None:
         """Display a PNG image file."""
         # Path already validated in display_image()
         if not os.path.exists(filename):
@@ -685,7 +778,7 @@ class Display:
             self._display_raw(raw_data, mode)
         else:
             # Direct PNG display (must be 128x250)
-            filename_bytes = filename.encode('utf-8')
+            filename_bytes = filename.encode("utf-8")
             success = self._lib.display_image_png(filename_bytes, int(mode))
             if not success:
                 raise DisplayError(f"Failed to display PNG image: {filename}")
@@ -742,7 +835,7 @@ class Display:
 
         # Create output buffer
         output_data = (ctypes.c_ubyte * self.ARRAY_SIZE)()
-        filename_bytes = filename.encode('utf-8')
+        filename_bytes = filename.encode("utf-8")
 
         success = self._lib.convert_png_to_1bit(filename_bytes, output_data)
         if not success:
@@ -771,14 +864,16 @@ class Display:
         Raises:
             DisplayError: If firmware type is invalid or setting fails
         """
-        if not (hasattr(self, '_config_available') and self._config_available):
-            raise DisplayError("Configuration system not available. Please rebuild the Rust library.")
+        if not (hasattr(self, "_config_available") and self._config_available):
+            raise DisplayError(
+                "Configuration system not available. Please rebuild the Rust library."
+            )
 
         if isinstance(firmware_type, FirmwareType):
             firmware_str = firmware_type.value
         else:
             firmware_str = firmware_type
-        firmware_bytes = firmware_str.encode('utf-8')
+        firmware_bytes = firmware_str.encode("utf-8")
         success = self._lib.display_set_firmware(firmware_bytes)
         if not success:
             raise DisplayError(f"Failed to set firmware type: {firmware_type}")
@@ -793,14 +888,16 @@ class Display:
         Raises:
             DisplayError: If getting firmware fails
         """
-        if not (hasattr(self, '_config_available') and self._config_available):
-            raise DisplayError("Configuration system not available. Please rebuild the Rust library.")
+        if not (hasattr(self, "_config_available") and self._config_available):
+            raise DisplayError(
+                "Configuration system not available. Please rebuild the Rust library."
+            )
 
         buffer = ctypes.create_string_buffer(64)  # Should be enough for firmware names
         success = self._lib.display_get_firmware(buffer, 64)
         if not success:
             raise DisplayError("Failed to get current firmware type")
-        return buffer.value.decode('utf-8')
+        return buffer.value.decode("utf-8")
 
     def initialize_config(self) -> None:
         """
@@ -810,8 +907,10 @@ class Display:
         Raises:
             DisplayError: If configuration initialization fails
         """
-        if not (hasattr(self, '_config_available') and self._config_available):
-            raise DisplayError("Configuration system not available. Please rebuild the Rust library.")
+        if not (hasattr(self, "_config_available") and self._config_available):
+            raise DisplayError(
+                "Configuration system not available. Please rebuild the Rust library."
+            )
 
         success = self._lib.display_initialize_config()
         if not success:
@@ -840,7 +939,7 @@ class Display:
         with cls._cache_lock:
             if cls._cache_manager:
                 return cls._cache_manager.get_stats()
-            return {'entries': 0, 'max_size': 0, 'total_bytes': 0, 'persist_enabled': False}
+            return {"entries": 0, "max_size": 0, "total_bytes": 0, "persist_enabled": False}
 
     def _get_display_dimensions(self) -> tuple[int, int]:
         """Get current display dimensions."""
@@ -848,10 +947,16 @@ class Display:
             self.initialize()
         return self.WIDTH, self.HEIGHT
 
-    def _convert_image_rust(self, image_path: str, scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-                           dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-                           rotate: bool = False, flop: bool = False,
-                           crop_x: int | None = None, crop_y: int | None = None) -> bytes:
+    def _convert_image_rust(
+        self,
+        image_path: str,
+        scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+        dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+        rotate: bool = False,
+        flop: bool = False,
+        crop_x: int | None = None,
+        crop_y: int | None = None,
+    ) -> bytes:
         """
         Convert image using Rust processing (faster, supports more formats).
 
@@ -864,17 +969,21 @@ class Display:
 
         # Create output buffer
         output_data = (ctypes.c_ubyte * self.ARRAY_SIZE)()
-        filename_bytes = image_path.encode('utf-8')
+        filename_bytes = image_path.encode("utf-8")
 
         # Convert None to -1 for crop coordinates
         crop_x_val = -1 if crop_x is None else crop_x
         crop_y_val = -1 if crop_y is None else crop_y
 
         success = self._lib.process_image_auto(
-            filename_bytes, output_data,
-            int(scaling), int(dithering),
-            int(rotate), int(flop),
-            crop_x_val, crop_y_val
+            filename_bytes,
+            output_data,
+            int(scaling),
+            int(dithering),
+            int(rotate),
+            int(flop),
+            crop_x_val,
+            crop_y_val,
         )
 
         if not success:
@@ -892,11 +1001,11 @@ class Display:
         Returns:
             True if format is supported
         """
-        if not hasattr(self, '_rust_processing_available') or not self._rust_processing_available:
+        if not hasattr(self, "_rust_processing_available") or not self._rust_processing_available:
             # Fallback to PNG only
-            return image_path.lower().endswith('.png')
+            return image_path.lower().endswith(".png")
 
-        filename_bytes = image_path.encode('utf-8')
+        filename_bytes = image_path.encode("utf-8")
         return bool(self._lib.is_image_format_supported(filename_bytes))
 
     def get_supported_formats(self) -> list[str]:
@@ -906,22 +1015,28 @@ class Display:
         Returns:
             List of supported file extensions
         """
-        if not hasattr(self, '_rust_processing_available') or not self._rust_processing_available:
-            return ['png']
+        if not hasattr(self, "_rust_processing_available") or not self._rust_processing_available:
+            return ["png"]
 
         buffer = ctypes.create_string_buffer(256)
         success = self._lib.get_supported_image_formats(buffer, 256)
 
         if success:
-            formats_str = buffer.value.decode('utf-8')
-            return formats_str.split(',')
+            formats_str = buffer.value.decode("utf-8")
+            return formats_str.split(",")
 
-        return ['png']
+        return ["png"]
 
-    def _convert_png_auto(self, image_path: str, scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-                         dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-                         rotate: bool = False, flop: bool = False,
-                         crop_x: int | None = None, crop_y: int | None = None) -> str:
+    def _convert_png_auto(
+        self,
+        image_path: str,
+        scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+        dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+        rotate: bool = False,
+        flop: bool = False,
+        crop_x: int | None = None,
+        crop_y: int | None = None,
+    ) -> str:
         """
         Convert any image to display-compatible format with caching support.
         Now supports multiple image formats via Rust processing.
@@ -953,14 +1068,21 @@ class Display:
         # Check cache first
         if Display._cache_manager:
             cached_path = Display._cache_manager.get(
-                image_path, display_width, display_height,
-                int(scaling), int(dithering), rotate, flop, crop_x, crop_y
+                image_path,
+                display_width,
+                display_height,
+                int(scaling),
+                int(dithering),
+                rotate,
+                flop,
+                crop_x,
+                crop_y,
             )
             if cached_path:
                 return cached_path
 
         # Try Rust processing first if available (faster and supports more formats)
-        if hasattr(self, '_rust_processing_available') and self._rust_processing_available:
+        if hasattr(self, "_rust_processing_available") and self._rust_processing_available:
             try:
                 # Get raw data from Rust processing
                 raw_data = self._convert_image_rust(
@@ -968,7 +1090,7 @@ class Display:
                 )
 
                 # Save to temporary PNG file
-                temp_fd, temp_path = tempfile.mkstemp(suffix='.png', prefix='eink_auto_')
+                temp_fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="eink_auto_")
                 try:
                     os.close(temp_fd)
 
@@ -981,20 +1103,27 @@ class Display:
                             img_array.append(255 if bit else 0)
 
                     # Trim to exact size
-                    img_array = img_array[:display_width * display_height]
+                    img_array = img_array[: display_width * display_height]
 
                     # Create PIL image from array
-                    img = Image.new('L', (display_width, display_height))
+                    img = Image.new("L", (display_width, display_height))
                     img.putdata(img_array)
-                    img = img.convert('1')
-                    img.save(temp_path, 'PNG')
+                    img = img.convert("1")
+                    img.save(temp_path, "PNG")
 
                     # Store in cache
                     if Display._cache_manager:
                         Display._cache_manager.put(
-                            image_path, display_width, display_height,
-                            int(scaling), int(dithering), rotate, flop, crop_x, crop_y,
-                            temp_path
+                            image_path,
+                            display_width,
+                            display_height,
+                            int(scaling),
+                            int(dithering),
+                            rotate,
+                            flop,
+                            crop_x,
+                            crop_y,
+                            temp_path,
                         )
 
                     return temp_path
@@ -1014,8 +1143,8 @@ class Display:
             # Load and process the image
             with Image.open(image_path) as img:
                 # Convert to RGB if needed (handles RGBA, palette, etc.)
-                if img.mode not in ('RGB', 'L'):
-                    img = img.convert('RGB')
+                if img.mode not in ("RGB", "L"):
+                    img = img.convert("RGB")
 
                 # Apply transformations (rotate, flop)
                 if flop:
@@ -1024,26 +1153,35 @@ class Display:
                     img = img.transpose(Image.ROTATE_90)
 
                 # Scale the image based on method
-                processed_img = self._scale_image(img, display_width, display_height, scaling, crop_x, crop_y)
+                processed_img = self._scale_image(
+                    img, display_width, display_height, scaling, crop_x, crop_y
+                )
 
                 # Convert to 1-bit with dithering
                 if dithering == DitheringMethod.FLOYD_STEINBERG:
-                    bw_img = processed_img.convert('1', dither=Image.FLOYDSTEINBERG)
+                    bw_img = processed_img.convert("1", dither=Image.FLOYDSTEINBERG)
                 else:
-                    bw_img = processed_img.convert('1', dither=Image.NONE)
+                    bw_img = processed_img.convert("1", dither=Image.NONE)
 
                 # Save to temporary file
-                temp_fd, temp_path = tempfile.mkstemp(suffix='.png', prefix='eink_auto_')
+                temp_fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="eink_auto_")
                 try:
                     os.close(temp_fd)
-                    bw_img.save(temp_path, 'PNG')
+                    bw_img.save(temp_path, "PNG")
 
                     # Store in cache
                     if Display._cache_manager:
                         Display._cache_manager.put(
-                            image_path, display_width, display_height,
-                            int(scaling), int(dithering), rotate, flop, crop_x, crop_y,
-                            temp_path
+                            image_path,
+                            display_width,
+                            display_height,
+                            int(scaling),
+                            int(dithering),
+                            rotate,
+                            flop,
+                            crop_x,
+                            crop_y,
+                            temp_path,
                         )
 
                     return temp_path
@@ -1057,9 +1195,15 @@ class Display:
         except Exception as e:
             raise DisplayError(f"Failed to convert PNG: {e}")
 
-    def _scale_image(self, img: Image.Image, target_width: int, target_height: int,
-                    scaling: ScalingMethod, crop_x: int | None = None,
-                    crop_y: int | None = None) -> Image.Image:
+    def _scale_image(
+        self,
+        img: Image.Image,
+        target_width: int,
+        target_height: int,
+        scaling: ScalingMethod,
+        crop_x: int | None = None,
+        crop_y: int | None = None,
+    ) -> Image.Image:
         """
         Scale image according to specified method.
 
@@ -1121,19 +1265,25 @@ class Display:
             scaled_img = img.resize((new_width, new_height), Image.LANCZOS)
 
             # Create new image with target dimensions and paste scaled image centered
-            result = Image.new('RGB', (target_width, target_height), 'white')
+            result = Image.new("RGB", (target_width, target_height), "white")
             paste_x = (target_width - new_width) // 2
             paste_y = (target_height - new_height) // 2
             result.paste(scaled_img, (paste_x, paste_y))
 
             return result
 
-    def display_png_auto(self, image_path: str, mode: DisplayMode = DisplayMode.FULL,
-                        scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-                        dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-                        rotate: bool = False, flop: bool = False,
-                        crop_x: int | None = None, crop_y: int | None = None,
-                        cleanup_temp: bool = True) -> bool:
+    def display_png_auto(
+        self,
+        image_path: str,
+        mode: DisplayMode = DisplayMode.FULL,
+        scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+        dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+        rotate: bool = False,
+        flop: bool = False,
+        crop_x: int | None = None,
+        crop_y: int | None = None,
+        cleanup_temp: bool = True,
+    ) -> bool:
         """
         Display any image with automatic conversion to display specifications.
         Supports multiple formats: PNG, JPEG, GIF, BMP, TIFF, WebP, ICO, PNM, TGA, DDS
@@ -1158,7 +1308,9 @@ class Display:
         temp_path = None
         try:
             # Convert image to display format
-            temp_path = self._convert_png_auto(image_path, scaling, dithering, rotate, flop, crop_x, crop_y)
+            temp_path = self._convert_png_auto(
+                image_path, scaling, dithering, rotate, flop, crop_x, crop_y
+            )
 
             # Display the converted image
             self.display_image(temp_path, mode, rotate=False)
@@ -1171,28 +1323,46 @@ class Display:
             # Cleanup temporary file (only if not cached)
             if cleanup_temp and temp_path and os.path.exists(temp_path):
                 # Don't delete if it's in cache
-                if not Display._cache_manager or temp_path not in Display._cache_manager._temp_files.values():
+                if (
+                    not Display._cache_manager
+                    or temp_path not in Display._cache_manager._temp_files.values()
+                ):
                     try:
                         os.unlink(temp_path)
                     except OSError:
                         pass  # Ignore cleanup errors
 
-    def display_image_auto(self, image_path: str, mode: DisplayMode = DisplayMode.FULL,
-                          scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-                          dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-                          rotate: bool = False, flop: bool = False,
-                          crop_x: int | None = None, crop_y: int | None = None) -> bool:
+    def display_image_auto(
+        self,
+        image_path: str,
+        mode: DisplayMode = DisplayMode.FULL,
+        scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+        dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+        rotate: bool = False,
+        flop: bool = False,
+        crop_x: int | None = None,
+        crop_y: int | None = None,
+    ) -> bool:
         """
         Alias for display_png_auto that better reflects multi-format support.
         """
-        return self.display_png_auto(image_path, mode, scaling, dithering, rotate, flop, crop_x, crop_y)
+        return self.display_png_auto(
+            image_path, mode, scaling, dithering, rotate, flop, crop_x, crop_y
+        )
 
 
 # Convenience functions for simple usage (following SDK pattern)
-def display_png(filename: str, mode: DisplayMode = DisplayMode.FULL, rotate: bool = False,
-                auto_convert: bool = False, scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-                dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-                flop: bool = False, crop_x: int | None = None, crop_y: int | None = None) -> None:
+def display_png(
+    filename: str,
+    mode: DisplayMode = DisplayMode.FULL,
+    rotate: bool = False,
+    auto_convert: bool = False,
+    scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+    dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+    flop: bool = False,
+    crop_x: int | None = None,
+    crop_y: int | None = None,
+) -> None:
     """
     Convenience function to display a PNG image.
 
@@ -1209,16 +1379,23 @@ def display_png(filename: str, mode: DisplayMode = DisplayMode.FULL, rotate: boo
     """
     with Display() as display:
         if auto_convert:
-            display.display_png_auto(filename, mode, scaling, dithering, rotate, flop, crop_x, crop_y)
+            display.display_png_auto(
+                filename, mode, scaling, dithering, rotate, flop, crop_x, crop_y
+            )
         else:
             display.display_image(filename, mode, rotate)
 
 
-def display_png_auto(filename: str, mode: DisplayMode = DisplayMode.FULL,
-                    scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-                    dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-                    rotate: bool = False, flop: bool = False,
-                    crop_x: int | None = None, crop_y: int | None = None) -> None:
+def display_png_auto(
+    filename: str,
+    mode: DisplayMode = DisplayMode.FULL,
+    scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+    dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+    rotate: bool = False,
+    flop: bool = False,
+    crop_x: int | None = None,
+    crop_y: int | None = None,
+) -> None:
     """
     Convenience function to display any PNG image with automatic conversion.
 
@@ -1236,11 +1413,16 @@ def display_png_auto(filename: str, mode: DisplayMode = DisplayMode.FULL,
         display.display_png_auto(filename, mode, scaling, dithering, rotate, flop, crop_x, crop_y)
 
 
-def display_image_auto(filename: str, mode: DisplayMode = DisplayMode.FULL,
-                       scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-                       dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-                       rotate: bool = False, flop: bool = False,
-                       crop_x: int | None = None, crop_y: int | None = None) -> None:
+def display_image_auto(
+    filename: str,
+    mode: DisplayMode = DisplayMode.FULL,
+    scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+    dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
+    rotate: bool = False,
+    flop: bool = False,
+    crop_x: int | None = None,
+    crop_y: int | None = None,
+) -> None:
     """
     Display any supported image format with automatic conversion.
     Supports: PNG, JPEG, GIF, BMP, TIFF, WebP, ICO, PNM, TGA, DDS
@@ -1271,24 +1453,21 @@ def get_display_info() -> dict:
 
     Returns:
         Dictionary with display specs
+        
+    Raises:
+        DisplayError: If display is not configured
     """
     # Create a temporary display instance to get actual dimensions
-    try:
-        with Display(auto_init=False) as display:
-            width, height = display.get_dimensions()
-            array_size = (width * height) // 8
-    except Exception:
-        # Fall back to class defaults
-        width = Display.WIDTH
-        height = Display.HEIGHT
-        array_size = Display.ARRAY_SIZE
+    with Display(auto_init=False) as display:
+        width, height = display.get_dimensions()
+        array_size = (width * height) // 8
 
     return {
         "width": width,
         "height": height,
         "data_size": array_size,
         "format": "1-bit monochrome",
-        "type": "e-ink"
+        "type": "e-ink",
     }
 
 
@@ -1313,7 +1492,9 @@ def rotate_bitpacked_ccw_90(src_data: bytes, src_width: int, src_height: int) ->
     # Validate input data size
     expected_bytes = (src_width * src_height + 7) // 8
     if len(src_data) < expected_bytes:
-        raise ValueError(f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}")
+        raise ValueError(
+            f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
+        )
 
     # Calculate destination dimensions and buffer size
     dst_width = src_height
@@ -1342,7 +1523,7 @@ def rotate_bitpacked_ccw_90(src_data: bytes, src_width: int, src_height: int) ->
             dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
 
             if src_bit:
-                dst_data[dst_byte_idx] |= (1 << dst_bit_pos)
+                dst_data[dst_byte_idx] |= 1 << dst_bit_pos
 
     return bytes(dst_data)
 
@@ -1368,7 +1549,9 @@ def flip_bitpacked_horizontal(src_data: bytes, src_width: int, src_height: int) 
     # Validate input data size
     expected_bytes = (src_width * src_height + 7) // 8
     if len(src_data) < expected_bytes:
-        raise ValueError(f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}")
+        raise ValueError(
+            f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
+        )
 
     # Initialize destination buffer (same size as source)
     dst_data = bytearray(expected_bytes)
@@ -1391,7 +1574,7 @@ def flip_bitpacked_horizontal(src_data: bytes, src_width: int, src_height: int) 
             dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
 
             if src_bit:
-                dst_data[dst_byte_idx] |= (1 << dst_bit_pos)
+                dst_data[dst_byte_idx] |= 1 << dst_bit_pos
 
     return bytes(dst_data)
 

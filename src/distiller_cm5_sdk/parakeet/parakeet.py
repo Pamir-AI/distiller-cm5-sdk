@@ -15,12 +15,13 @@ import soundfile as sf
 from distiller_cm5_sdk import get_model_path
 from distiller_cm5_sdk.hardware.audio.audio import Audio
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 class Parakeet:
-    def __init__(self, model_config=None, audio_config=None, vad_silence_duration:float=1.0) -> None:
+    def __init__(
+        self, model_config=None, audio_config=None, vad_silence_duration: float = 1.0
+    ) -> None:
         # override mic gain
         Audio.set_mic_gain_static(85)
         if audio_config is None:
@@ -31,7 +32,7 @@ class Parakeet:
         self.model_config = {
             "model_path": model_config.get("model_path", model_path),
             "device": model_config.get("device", "cpu"),
-            "num_threads": model_config.get("num_threads",4),
+            "num_threads": model_config.get("num_threads", 4),
             "vad_silence_duration": vad_silence_duration,
         }
 
@@ -41,7 +42,7 @@ class Parakeet:
             "chunk": audio_config.get("chunk", 512),
             "record_secs": audio_config.get("record_secs", 3),
             "device": audio_config.get("device", None),  # None means default device
-            "format": audio_config.get("format", pyaudio.paInt16)
+            "format": audio_config.get("format", pyaudio.paInt16),
         }
 
         # load parakeet asr model
@@ -60,11 +61,16 @@ class Parakeet:
     def load_vad_model(self):
         logging.info(f"Loading VAD Model from {self.model_config['model_path']}")
         required_files = ["silero_vad.onnx"]
-        missing_files = [_ for _ in required_files if
-                         not os.path.isfile(os.path.join(self.model_config["model_path"], _))]
+        missing_files = [
+            _
+            for _ in required_files
+            if not os.path.isfile(os.path.join(self.model_config["model_path"], _))
+        ]
 
         if missing_files:
-            logging.warning(f"Vad Model is incomplete or missing. Missing files: {', '.join(missing_files)}")
+            logging.warning(
+                f"Vad Model is incomplete or missing. Missing files: {', '.join(missing_files)}"
+            )
             return None
 
         config = sherpa_onnx.VadModelConfig()
@@ -85,11 +91,16 @@ class Parakeet:
         logging.info(f"Loading Parakeet Model from {self.model_config['model_path']}")
 
         required_files = ["encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt"]
-        missing_files = [f for f in required_files if
-                         not os.path.isfile(os.path.join(self.model_config["model_path"], f))]
+        missing_files = [
+            f
+            for f in required_files
+            if not os.path.isfile(os.path.join(self.model_config["model_path"], f))
+        ]
 
         if missing_files:
-            logging.error(f"Parakeet Model is incomplete or missing. Missing files: {', '.join(missing_files)}")
+            logging.error(
+                f"Parakeet Model is incomplete or missing. Missing files: {', '.join(missing_files)}"
+            )
             raise ValueError(
                 f"Parakeet Model loading failed.\n"
                 f"Missing files: {', '.join(missing_files)}\n"
@@ -99,12 +110,12 @@ class Parakeet:
         start_time = time.time()
         with suppress_stdout_stderr():
             recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
-                encoder=os.path.join(self.model_config['model_path'],'encoder.onnx'),
-                decoder=os.path.join(self.model_config['model_path'],'decoder.onnx'),
-                tokens=os.path.join(self.model_config['model_path'],'tokens.txt'),
-                joiner=os.path.join(self.model_config['model_path'],'joiner.onnx'),
+                encoder=os.path.join(self.model_config["model_path"], "encoder.onnx"),
+                decoder=os.path.join(self.model_config["model_path"], "decoder.onnx"),
+                tokens=os.path.join(self.model_config["model_path"], "tokens.txt"),
+                joiner=os.path.join(self.model_config["model_path"], "joiner.onnx"),
                 num_threads=1,
-                model_type="nemo_transducer"
+                model_type="nemo_transducer",
             )
 
         if recognizer is None:
@@ -124,7 +135,9 @@ class Parakeet:
         self.recognizer.decode_stream(s)
         result = s.result.text.strip()
 
-        logging.info(f"Transcribed audio from '{audio_path}' (sample rate: {sample_rate} Hz): '{result}'")
+        logging.info(
+            f"Transcribed audio from '{audio_path}' (sample rate: {sample_rate} Hz): '{result}'"
+        )
 
         yield result
 
@@ -144,13 +157,17 @@ class Parakeet:
         s = self.recognizer.create_stream()
         # Read waveform from buffer
         wave, sample_rate = sf.read(buffer)
-        assert sample_rate == self.audio_config["rate"], f"Expected sample rate {self.audio_config['rate']}, got {sample_rate}"
+        assert sample_rate == self.audio_config["rate"], (
+            f"Expected sample rate {self.audio_config['rate']}, got {sample_rate}"
+        )
         assert wave.ndim == 1, "Audio must be mono for transcribe_buffer"
 
         s.accept_waveform(self.audio_config["rate"], wave)
         self.recognizer.decode_stream(s)
         result = s.result.text.strip()
-        logging.info(f"Transcribed audio from buffer (sample rate: {self.audio_config['rate']} Hz): '{result}'")
+        logging.info(
+            f"Transcribed audio from buffer (sample rate: {self.audio_config['rate']} Hz): '{result}'"
+        )
         yield result
 
     def _init_audio(self):
@@ -166,9 +183,13 @@ class Parakeet:
                 input_devices.append((i, device_info["name"]))
 
         if not input_devices:
-            raise Exception("No audio input devices found. Please ensure a microphone is connected.")
+            raise Exception(
+                "No audio input devices found. Please ensure a microphone is connected."
+            )
 
-        logging.info(f"Found {len(input_devices)} input device(s): {[name for _, name in input_devices]}")
+        logging.info(
+            f"Found {len(input_devices)} input device(s): {[name for _, name in input_devices]}"
+        )
 
         # If a specific device name was provided, find its index
         if isinstance(self.audio_config["device"], str):
@@ -222,7 +243,7 @@ class Parakeet:
                 rate=self.audio_config["rate"],
                 input=True,
                 input_device_index=self.audio_config["device"],
-                frames_per_buffer=self.audio_config["chunk"]
+                frames_per_buffer=self.audio_config["chunk"],
             )
 
             self._audio_frames = []
@@ -266,11 +287,11 @@ class Parakeet:
             return None
 
         buffer = io.BytesIO()
-        with wave.open(buffer, 'wb') as wf:
+        with wave.open(buffer, "wb") as wf:
             wf.setnchannels(self.audio_config["channels"])
             wf.setsampwidth(self._pyaudio.get_sample_size(self.audio_config["format"]))
             wf.setframerate(self.audio_config["rate"])
-            wf.writeframes(b''.join(self._audio_frames))
+            wf.writeframes(b"".join(self._audio_frames))
 
         return buffer.getvalue()
 
@@ -326,29 +347,33 @@ class Parakeet:
             return
 
         default_input_device_idx = sd.default.device[0]
-        logging.info(f'Use default device: {devices[default_input_device_idx]["name"]}')
+        logging.info(f"Use default device: {devices[default_input_device_idx]['name']}")
 
-        logging.info(f"Audio stream opened with rate: {self.audio_config['rate']}, "
-                     f"device: {self.audio_config['device']}")
+        logging.info(
+            f"Audio stream opened with rate: {self.audio_config['rate']}, "
+            f"device: {self.audio_config['device']}"
+        )
 
         # Load VAD model if not already loaded
         if self.vad_model is None:
             self.vad_model = self.load_vad_model()
             if self.vad_model is None:
-                logging.error("Failed to load VAD model. Cannot proceed with auto_record_and_transcribe.")
+                logging.error(
+                    "Failed to load VAD model. Cannot proceed with auto_record_and_transcribe."
+                )
                 return
 
         _buffer = []
         with sd.InputStream(channels=1, dtype="float32", samplerate=self.audio_config["rate"]) as s:
             while True:
-                _samples, _ = s.read(int(0.1 * self.audio_config['rate']))
+                _samples, _ = s.read(int(0.1 * self.audio_config["rate"]))
                 _samples = _samples.reshape(-1)
 
                 _buffer = np.concatenate([_buffer, _samples])
 
                 while len(_buffer) > self.vad_windows_size:
-                    self.vad_model.accept_waveform(_buffer[:self.vad_windows_size])
-                    _buffer = _buffer[self.vad_windows_size:]
+                    self.vad_model.accept_waveform(_buffer[: self.vad_windows_size])
+                    _buffer = _buffer[self.vad_windows_size :]
 
                 while not self.vad_model.empty():
                     _stream = self.recognizer.create_stream()
@@ -376,7 +401,7 @@ class suppress_stdout_stderr:
         os.close(self.null_fds[1])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Example usage with auto push-to-talk
     try:
         parakeet = Parakeet(vad_silence_duration=0.5)
@@ -393,6 +418,7 @@ if __name__ == '__main__':
             if audio_data:
                 # Save the recording to /tmp for debugging (avoids permission issues)
                 import tempfile
+
                 try:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                         output_filename = f.name
@@ -419,4 +445,3 @@ if __name__ == '__main__':
 
     # for text in parakeet.auto_record_and_transcribe():
     #     print(f"Transcribed: {text}")
-

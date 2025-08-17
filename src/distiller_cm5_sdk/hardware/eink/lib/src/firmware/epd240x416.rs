@@ -311,4 +311,3 @@ impl Default for EPD240x416Firmware {
         Self::new()
     }
 }
-

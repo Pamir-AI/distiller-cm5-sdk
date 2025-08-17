@@ -58,3 +58,6 @@ debian/debhelper-build-stamp
 debian/distiller-cm5-sdk.substvars
 debian/distiller-cm5-sdk/
 debian/files
+
+# Bacon-ls
+**/.bacon-locations

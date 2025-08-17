@@ -1,11 +1,13 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_uint};
 use std::ptr;
 
-use crate::display;
-use crate::protocol::DisplayMode;
 use crate::config;
-use crate::image_processing::{ProcessingOptions, ScalingMethod, DitheringMethod};
+use crate::display;
+use crate::image_processing::{DitheringMethod, ProcessingOptions, ScalingMethod};
+use crate::protocol::DisplayMode;
 
 // C FFI exports
 #[unsafe(no_mangle)]
@@ -25,12 +27,15 @@ pub extern "C" fn display_image_raw(data: *const u8, mode: c_int) -> c_int {
         return 0;
     }
 
-    // Use configurable default firmware array size
+    // Get configured firmware array size - fail if not configured
     let array_size = match config::get_default_spec() {
         Ok(spec) => spec.array_size(),
-        Err(_) => {
-            log::warn!("Failed to get default firmware spec, falling back to EPD128x250");
-            (128 * 250) / 8 // Fallback to original hardcoded size
+        Err(e) => {
+            log::error!(
+                "Display not configured: {}. Set DISTILLER_EINK_FIRMWARE environment variable.",
+                e
+            );
+            return 0; // Return error
         }
     };
     let data_slice = unsafe { std::slice::from_raw_parts(data, array_size) };
@@ -129,12 +134,15 @@ pub extern "C" fn convert_png_to_1bit(filename: *const c_char, output_data: *mut
     match display::convert_png_to_1bit(filename_str) {
         Ok(data) => {
             unsafe {
-                // Use configurable default firmware array size
+                // Get configured firmware array size - fail if not configured
                 let array_size = match config::get_default_spec() {
                     Ok(spec) => spec.array_size(),
-                    Err(_) => {
-                        log::warn!("Failed to get default firmware spec, falling back to EPD128x250");
-                        (128 * 250) / 8 // Fallback to original hardcoded size
+                    Err(e) => {
+                        log::error!(
+                            "Display not configured: {}. Set DISTILLER_EINK_FIRMWARE environment variable.",
+                            e
+                        );
+                        return 0; // Return error
                     }
                 };
                 ptr::copy_nonoverlapping(data.as_ptr(), output_data, array_size);
@@ -181,13 +189,17 @@ pub extern "C" fn display_get_firmware(firmware_str: *mut c_char, max_len: c_uin
         Ok(firmware_type) => {
             let firmware_name = firmware_type.as_str();
             let name_bytes = firmware_name.as_bytes();
-            
+
             if name_bytes.len() + 1 > max_len as usize {
                 return 0; // Buffer too small
             }
 
             unsafe {
-                ptr::copy_nonoverlapping(name_bytes.as_ptr(), firmware_str as *mut u8, name_bytes.len());
+                ptr::copy_nonoverlapping(
+                    name_bytes.as_ptr(),
+                    firmware_str as *mut u8,
+                    name_bytes.len(),
+                );
                 *firmware_str.add(name_bytes.len()) = 0; // Null terminator
             }
             1
@@ -257,8 +269,16 @@ pub extern "C" fn process_image_auto(
         },
         rotate: rotate != 0,
         flip: flip != 0,
-        crop_x: if crop_x < 0 { None } else { Some(crop_x as u32) },
-        crop_y: if crop_y < 0 { None } else { Some(crop_y as u32) },
+        crop_x: if crop_x < 0 {
+            None
+        } else {
+            Some(crop_x as u32)
+        },
+        crop_y: if crop_y < 0 {
+            None
+        } else {
+            Some(crop_y as u32)
+        },
     };
 
     // Process the image
@@ -311,10 +331,13 @@ pub extern "C" fn get_supported_image_formats(formats: *mut c_char, max_len: c_u
     }
 
     unsafe {
-        ptr::copy_nonoverlapping(formats_bytes.as_ptr(), formats as *mut u8, formats_bytes.len());
+        ptr::copy_nonoverlapping(
+            formats_bytes.as_ptr(),
+            formats as *mut u8,
+            formats_bytes.len(),
+        );
         *formats.add(formats_bytes.len()) = 0; // Null terminator
     }
 
     1
 }
-

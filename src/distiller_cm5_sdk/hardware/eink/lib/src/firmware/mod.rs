@@ -94,4 +94,3 @@ pub trait DisplayFirmware {
         Ok(())
     }
 }
-

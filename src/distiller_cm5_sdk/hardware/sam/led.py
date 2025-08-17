@@ -4,6 +4,7 @@ from pathlib import Path
 
 class LEDError(Exception):
     """Custom exception for LED-related errors."""
+
     pass
 
 
@@ -103,20 +104,14 @@ class LED:
             try:
                 # Use subprocess with sudo to write the value
                 cmd = ["sudo", "tee", str(file_path)]
-                subprocess.run(
-                    cmd,
-                    input=str(value),
-                    text=True,
-                    capture_output=True,
-                    check=True
-                )
+                subprocess.run(cmd, input=str(value), text=True, capture_output=True, check=True)
             except subprocess.CalledProcessError as e:
                 raise LEDError(f"Failed to write '{value}' to {file_path} using sudo: {e}")
             except FileNotFoundError:
                 raise LEDError("sudo command not found. Please install sudo or run as root.")
         else:
             try:
-                with open(file_path, 'w') as f:
+                with open(file_path, "w") as f:
                     f.write(str(value))
                     f.flush()
             except PermissionError as e:
@@ -223,7 +218,9 @@ class LED:
         Raises:
             NotImplementedError: Animation modes are not implemented
         """
-        raise NotImplementedError("Animation modes have been removed. Use set_rgb_color() for static control only.")
+        raise NotImplementedError(
+            "Animation modes have been removed. Use set_rgb_color() for static control only."
+        )
 
     def get_animation_mode(self, led_id: int) -> tuple[str, int]:
         """
@@ -234,7 +231,9 @@ class LED:
         Raises:
             NotImplementedError: Animation modes are not implemented
         """
-        raise NotImplementedError("Animation modes have been removed. Use get_rgb_color() and get_brightness() instead.")
+        raise NotImplementedError(
+            "Animation modes have been removed. Use get_rgb_color() and get_brightness() instead."
+        )
 
     def set_trigger(self, led_id: int, trigger: str) -> None:
         """
@@ -246,7 +245,9 @@ class LED:
         Raises:
             NotImplementedError: LED triggers are not implemented
         """
-        raise NotImplementedError("LED triggers have been removed. Use set_rgb_color() for static control only.")
+        raise NotImplementedError(
+            "LED triggers have been removed. Use set_rgb_color() for static control only."
+        )
 
     def get_trigger(self, led_id: int) -> str:
         """
@@ -257,7 +258,9 @@ class LED:
         Raises:
             NotImplementedError: LED triggers are not implemented
         """
-        raise NotImplementedError("LED triggers have been removed. Use get_rgb_color() and get_brightness() instead.")
+        raise NotImplementedError(
+            "LED triggers have been removed. Use get_rgb_color() and get_brightness() instead."
+        )
 
     def get_available_triggers(self, led_id: int) -> list[str]:
         """
@@ -268,7 +271,9 @@ class LED:
         Raises:
             NotImplementedError: LED triggers are not implemented
         """
-        raise NotImplementedError("LED triggers have been removed. Only static color control is available.")
+        raise NotImplementedError(
+            "LED triggers have been removed. Only static color control is available."
+        )
 
     def set_brightness(self, led_id: int, brightness: int) -> None:
         """
@@ -346,8 +351,7 @@ class LED:
         for led_id in self.available_leds:
             self.set_brightness(led_id, brightness)
 
-    def blink_led(self, led_id: int, red: int, green: int, blue: int,
-                  timing: int = 500) -> None:
+    def blink_led(self, led_id: int, red: int, green: int, blue: int, timing: int = 500) -> None:
         """
         Set a LED to blink with specified color.
 
@@ -356,10 +360,11 @@ class LED:
         Raises:
             NotImplementedError: Animation modes are not implemented
         """
-        raise NotImplementedError("Blinking animation has been removed. Use set_rgb_color() for static control only.")
+        raise NotImplementedError(
+            "Blinking animation has been removed. Use set_rgb_color() for static control only."
+        )
 
-    def fade_led(self, led_id: int, red: int, green: int, blue: int,
-                 timing: int = 1000) -> None:
+    def fade_led(self, led_id: int, red: int, green: int, blue: int, timing: int = 1000) -> None:
         """
         Set a LED to fade with specified color.
 
@@ -368,7 +373,9 @@ class LED:
         Raises:
             NotImplementedError: Animation modes are not implemented
         """
-        raise NotImplementedError("Fading animation has been removed. Use set_rgb_color() for static control only.")
+        raise NotImplementedError(
+            "Fading animation has been removed. Use set_rgb_color() for static control only."
+        )
 
     def rainbow_led(self, led_id: int, timing: int = 1000) -> None:
         """
@@ -379,7 +386,9 @@ class LED:
         Raises:
             NotImplementedError: Animation modes are not implemented
         """
-        raise NotImplementedError("Rainbow animation has been removed. Use set_rgb_color() for static control only.")
+        raise NotImplementedError(
+            "Rainbow animation has been removed. Use set_rgb_color() for static control only."
+        )
 
     def static_led(self, led_id: int, red: int, green: int, blue: int) -> None:
         """
@@ -410,8 +419,9 @@ class LED:
         """
         pass
 
-    def set_led_color(self, r: int, g: int, b: int, brightness: float = 0.5,
-                      delay: float = 0.0, led_id: int = 0) -> bool:
+    def set_led_color(
+        self, r: int, g: int, b: int, brightness: float = 0.5, delay: float = 0.0, led_id: int = 0
+    ) -> bool:
         """
         Legacy compatibility method for setting LED color.
 
@@ -449,4 +459,3 @@ def create_led_with_sudo() -> LED:
         LED instance configured to use sudo for write operations
     """
     return LED(use_sudo=True)
-

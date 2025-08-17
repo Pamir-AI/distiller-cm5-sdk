@@ -19,6 +19,7 @@ def get_model_path(module_name):
     # Fall back to relative path for development
     return os.path.join(os.path.dirname(__file__), module_name, "models")
 
+
 def get_library_path():
     """
     Get the correct library path for native libraries.

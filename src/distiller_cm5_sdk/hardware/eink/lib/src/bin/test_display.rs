@@ -1,13 +1,12 @@
 #!/usr/bin/env rust-script
 
 use distiller_display_sdk_shared::{
-    config, create_black_image, create_white_image, display_cleanup, display_clear,
+    DisplayMode, config, create_black_image, create_white_image, display_cleanup, display_clear,
     display_image_raw, display_init, display_sleep, get_dimensions,
     image_processing::{
-        process_image_file, process_image_for_display, DitheringMethod, ProcessingOptions,
-        ScalingMethod,
+        DitheringMethod, ProcessingOptions, ScalingMethod, process_image_file,
+        process_image_for_display,
     },
-    DisplayMode,
 };
 use image::{DynamicImage, ImageBuffer, Luma};
 use std::env;
@@ -116,7 +115,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get display dimensions
     println!("\n2. Getting display dimensions...");
-    let dimensions = get_dimensions();
+    let dimensions = get_dimensions().expect(
+        "Failed to get display dimensions. Set DISTILLER_EINK_FIRMWARE environment variable.",
+    );
     println!(
         "Display dimensions: {}x{} pixels",
         dimensions.0, dimensions.1
@@ -127,8 +128,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test image creation
     println!("\n3. Testing image creation...");
-    let white_image = create_white_image();
-    let black_image = create_black_image();
+    let white_image = create_white_image().expect("Failed to create white image");
+    let black_image = create_black_image().expect("Failed to create black image");
 
     println!("White image size: {} bytes", white_image.len());
     println!("Black image size: {} bytes", black_image.len());
@@ -393,8 +394,8 @@ mod tests {
     #[test]
     fn test_image_creation() {
         // Test with default firmware
-        let white = create_white_image();
-        let black = create_black_image();
+        let white = create_white_image().expect("Failed to create white image");
+        let black = create_black_image().expect("Failed to create black image");
 
         assert_eq!(white.len(), black.len());
         assert!(white.len() > 0);
@@ -408,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_dimensions() {
-        let dims = get_dimensions();
+        let dims = get_dimensions().expect("Failed to get dimensions");
         assert!(dims.0 > 0);
         assert!(dims.1 > 0);
 
@@ -417,4 +418,3 @@ mod tests {
         assert!(supported.contains(&dims));
     }
 }
-

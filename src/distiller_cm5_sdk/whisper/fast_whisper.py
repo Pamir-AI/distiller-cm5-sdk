@@ -11,8 +11,7 @@ from faster_whisper import WhisperModel
 from distiller_cm5_sdk import get_model_path
 from distiller_cm5_sdk.hardware.audio.audio import Audio
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 class Whisper:
@@ -34,11 +33,12 @@ class Whisper:
             "model_size": model_config.get("model_size", "faster-distil-whisper-small.en"),
             "model_size_or_path": os.path.join(
                 model_config.get("model_hub_path", model_path),
-                model_config.get("model_size", "faster-distil-whisper-small.en")),
+                model_config.get("model_size", "faster-distil-whisper-small.en"),
+            ),
             "device": model_config.get("device", "cpu"),
             "compute_type": model_config.get("compute_type", "int8"),
             "beam_size": model_config.get("beam_size", 5),
-            "language": model_config.get("language", "en")
+            "language": model_config.get("language", "en"),
         }
         self.audio_config = {
             "channels": audio_config.get("channels", 1),
@@ -46,7 +46,7 @@ class Whisper:
             "chunk": audio_config.get("chunk", 1024),
             "record_secs": audio_config.get("record_secs", 3),
             "device": audio_config.get("device", None),  # None means default device
-            "format": audio_config.get("format", pyaudio.paInt16)
+            "format": audio_config.get("format", pyaudio.paInt16),
         }
 
         self.model = self.load_model()  # Load models once during initialization
@@ -61,13 +61,14 @@ class Whisper:
         if not os.path.isfile(os.path.join(self.model_config["model_size_or_path"], "model.bin")):
             logging.error("Model not found")
             raise ValueError(
-                f"Whisper Model not found, please put whisper model in {self.model_config['model_size_or_path']}")
+                f"Whisper Model not found, please put whisper model in {self.model_config['model_size_or_path']}"
+            )
 
         with suppress_stdout_stderr():
             model = WhisperModel(
                 model_size_or_path=self.model_config["model_size_or_path"],
                 device=self.model_config["device"],
-                compute_type=self.model_config["compute_type"]
+                compute_type=self.model_config["compute_type"],
             )
 
         if model is None:
@@ -79,10 +80,12 @@ class Whisper:
         segments, info = self.model.transcribe(
             audio_path,
             beam_size=self.model_config["beam_size"],
-            language=self.model_config["language"]
+            language=self.model_config["language"],
         )
 
-        logging.info(f"Detected language '{info.language}' with probability {info.language_probability}")
+        logging.info(
+            f"Detected language '{info.language}' with probability {info.language_probability}"
+        )
 
         for segment in segments:
             logging.info(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
@@ -102,12 +105,12 @@ class Whisper:
         buffer = io.BytesIO(audio_data)
 
         segments, info = self.model.transcribe(
-            buffer,
-            beam_size=self.model_config["beam_size"],
-            language=self.model_config["language"]
+            buffer, beam_size=self.model_config["beam_size"], language=self.model_config["language"]
         )
 
-        logging.info(f"Detected language '{info.language}' with probability {info.language_probability}")
+        logging.info(
+            f"Detected language '{info.language}' with probability {info.language_probability}"
+        )
 
         for segment in segments:
             logging.info(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
@@ -162,7 +165,7 @@ class Whisper:
                 rate=self.audio_config["rate"],
                 input=True,
                 input_device_index=self.audio_config["device"],
-                frames_per_buffer=self.audio_config["chunk"]
+                frames_per_buffer=self.audio_config["chunk"],
             )
 
             self._audio_frames = []
@@ -206,11 +209,11 @@ class Whisper:
             return None
 
         buffer = io.BytesIO()
-        with wave.open(buffer, 'wb') as wf:
+        with wave.open(buffer, "wb") as wf:
             wf.setnchannels(self.audio_config["channels"])
             wf.setsampwidth(self._pyaudio.get_sample_size(self.audio_config["format"]))
             wf.setframerate(self.audio_config["rate"])
-            wf.writeframes(b''.join(self._audio_frames))
+            wf.writeframes(b"".join(self._audio_frames))
 
         return buffer.getvalue()
 
@@ -261,7 +264,7 @@ class suppress_stdout_stderr:
         os.close(self.null_fds[1])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Example usage with push-to-talk
     whisper = Whisper(model_config={"model_size": "faster-distil-whisper-small.en"})
 

@@ -22,11 +22,7 @@ def main():
     # Initialize camera with real hardware
     print("\n1. Initializing camera...")
     camera = Camera(
-        resolution=(1280, 720),
-        framerate=30,
-        rotation=0,
-        format='bgr',
-        auto_check_config=True
+        resolution=(1280, 720), framerate=30, rotation=0, format="bgr", auto_check_config=True
     )
     print("  - Camera initialized successfully")
 
@@ -54,11 +50,7 @@ def main():
 
     # Test adjusting settings
     print("\n5. Testing setting adjustments...")
-    test_settings = {
-        'brightness': 60,
-        'contrast': 60,
-        'saturation': 60
-    }
+    test_settings = {"brightness": 60, "contrast": 60, "saturation": 60}
 
     # Store original values
     original_values = {}
@@ -76,17 +68,17 @@ def main():
 
     # Test different formats
     print("\n6. Testing different formats...")
-    formats = ['bgr', 'rgb', 'gray']
+    formats = ["bgr", "rgb", "gray"]
     for fmt in formats:
         try:
             print(f"  - Setting format to {fmt}")
             camera.format = fmt
             frame = camera.get_frame()
             filename = f"{output_dir}/format_{fmt}.jpg"
-            if fmt == 'gray':
+            if fmt == "gray":
                 # Convert grayscale to BGR for saving
                 frame_save = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-            elif fmt == 'rgb':
+            elif fmt == "rgb":
                 # Convert RGB to BGR for saving
                 frame_save = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             else:
@@ -98,7 +90,7 @@ def main():
             print(f"  - Error testing format {fmt}: {e}")
 
     # Reset to BGR for remaining tests
-    camera.format = 'bgr'
+    camera.format = "bgr"
 
     # Test rotation
     print("\n7. Testing rotation settings...")
@@ -180,6 +172,8 @@ def main():
     print("\n=== Test completed successfully ===")
     print(f"All captured images saved to {os.path.abspath(output_dir)}")
 
+
 if __name__ == "__main__":
     import cv2  # Import here to handle import error explicitly
+
     main()

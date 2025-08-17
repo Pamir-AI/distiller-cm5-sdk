@@ -39,17 +39,16 @@ class InteractiveLEDDemo:
 
     def print_section(self, title, description=""):
         """Print a formatted section header."""
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"🎯 {title}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         if description:
             print(f"📝 {description}")
 
     def demo_initialization(self):
         """Demo 1: LED initialization and discovery."""
         self.print_section(
-            "Demo 1: LED Initialization",
-            "Discovering available LEDs and setting up sudo mode"
+            "Demo 1: LED Initialization", "Discovering available LEDs and setting up sudo mode"
         )
 
         print("🔧 Initializing LED module with sudo mode...")
@@ -68,8 +67,7 @@ class InteractiveLEDDemo:
     def demo_rgb_colors(self):
         """Demo 2: RGB color control."""
         self.print_section(
-            "Demo 2: RGB Color Control",
-            "Testing primary and secondary colors on LED 0"
+            "Demo 2: RGB Color Control", "Testing primary and secondary colors on LED 0"
         )
 
         led_id = self.available_leds[0]
@@ -104,7 +102,7 @@ class InteractiveLEDDemo:
         """Demo 3: Brightness control."""
         self.print_section(
             "Demo 3: Brightness Control",
-            "Demonstrating brightness levels while preserving color ratios"
+            "Demonstrating brightness levels while preserving color ratios",
         )
 
         led_id = self.available_leds[0]
@@ -138,8 +136,7 @@ class InteractiveLEDDemo:
     def demo_multi_led_static(self):
         """Demo 4: Multi-LED static control."""
         self.print_section(
-            "Demo 4: Multi-LED Static Control",
-            "Setting different static colors on multiple LEDs"
+            "Demo 4: Multi-LED Static Control", "Setting different static colors on multiple LEDs"
         )
 
         if len(self.available_leds) == 1:
@@ -165,14 +162,14 @@ class InteractiveLEDDemo:
 
             # Define colors for multiple LEDs
             colors = [
-                (255, 0, 0, "🔴 Red"),      # LED 0
-                (0, 255, 0, "🟢 Green"),    # LED 1
-                (0, 0, 255, "🔵 Blue"),     # LED 2
-                (255, 255, 0, "🟡 Yellow"), # LED 3
-                (255, 0, 255, "🟣 Magenta"), # LED 4
-                (0, 255, 255, "🩵 Cyan"),   # LED 5
-                (255, 128, 0, "🟠 Orange"), # LED 6
-                (128, 0, 128, "🟣 Purple"), # LED 7+
+                (255, 0, 0, "🔴 Red"),  # LED 0
+                (0, 255, 0, "🟢 Green"),  # LED 1
+                (0, 0, 255, "🔵 Blue"),  # LED 2
+                (255, 255, 0, "🟡 Yellow"),  # LED 3
+                (255, 0, 255, "🟣 Magenta"),  # LED 4
+                (0, 255, 255, "🩵 Cyan"),  # LED 5
+                (255, 128, 0, "🟠 Orange"),  # LED 6
+                (128, 0, 128, "🟣 Purple"),  # LED 7+
             ]
 
             for i, led_id in enumerate(self.available_leds):
@@ -195,8 +192,7 @@ class InteractiveLEDDemo:
     def demo_convenience_methods(self):
         """Demo 5: Convenience methods."""
         self.print_section(
-            "Demo 5: Convenience Methods",
-            "Testing bulk operations and helper functions"
+            "Demo 5: Convenience Methods", "Testing bulk operations and helper functions"
         )
 
         if len(self.available_leds) > 1:
@@ -238,10 +234,7 @@ class InteractiveLEDDemo:
 
     def demo_error_handling(self):
         """Demo 6: Error handling."""
-        self.print_section(
-            "Demo 6: Error Handling",
-            "Testing input validation and error messages"
-        )
+        self.print_section("Demo 6: Error Handling", "Testing input validation and error messages")
 
         valid_led = self.available_leds[0]
         print("🧪 Testing error handling and validation...")
@@ -271,8 +264,7 @@ class InteractiveLEDDemo:
     def demo_sudo_mode(self):
         """Demo 7: Sudo mode switching."""
         self.print_section(
-            "Demo 7: Sudo Mode Management",
-            "Testing sudo mode switching functionality"
+            "Demo 7: Sudo Mode Management", "Testing sudo mode switching functionality"
         )
 
         print("🔐 Testing sudo mode switching...")
@@ -299,10 +291,7 @@ class InteractiveLEDDemo:
 
     def demo_cleanup(self):
         """Demo 8: Cleanup and summary."""
-        self.print_section(
-            "Demo 8: Cleanup & Summary",
-            "Proper cleanup and demonstration summary"
-        )
+        self.print_section("Demo 8: Cleanup & Summary", "Proper cleanup and demonstration summary")
 
         print("🧹 Performing comprehensive cleanup...")
 
@@ -373,6 +362,7 @@ class InteractiveLEDDemo:
 
 def main():
     """Main function."""
+
     # Set up signal handler for clean exit
     def signal_handler(sig, frame):
         print("\n🛑 Received exit signal...")

@@ -17,6 +17,7 @@ import numpy as np
 
 class CameraError(Exception):
     """Custom exception for Camera-related errors."""
+
     pass
 
 
@@ -31,12 +32,14 @@ class Camera:
     - Check camera configuration
     """
 
-    def __init__(self,
-                resolution: tuple[int, int] = (640, 480),
-                framerate: int = 30,
-                rotation: int = 0,
-                format: str = 'bgr',
-                auto_check_config: bool = True):
+    def __init__(
+        self,
+        resolution: tuple[int, int] = (640, 480),
+        framerate: int = 30,
+        rotation: int = 0,
+        format: str = "bgr",
+        auto_check_config: bool = True,
+    ):
         """
         Initialize the Camera object.
 
@@ -62,9 +65,11 @@ class Camera:
         self._frame_lock = threading.Lock()
 
         # Supported formats
-        self._supported_formats = ['bgr', 'rgb', 'gray']
+        self._supported_formats = ["bgr", "rgb", "gray"]
         if self.format not in self._supported_formats:
-            raise CameraError(f"Unsupported format: {self.format}. Must be one of {self._supported_formats}")
+            raise CameraError(
+                f"Unsupported format: {self.format}. Must be one of {self._supported_formats}"
+            )
 
         # Camera device ID (for libcamera)
         self._camera_id = 0
@@ -92,10 +97,7 @@ class Camera:
         # Check if libcamera tools are installed
         try:
             result = subprocess.run(
-                ["libcamera-still", "--list-cameras"],
-                capture_output=True,
-                text=True,
-                check=False
+                ["libcamera-still", "--list-cameras"], capture_output=True, text=True, check=False
             )
             if "Available cameras" not in result.stdout:
                 raise CameraError("No cameras detected by libcamera-still")
@@ -118,7 +120,7 @@ class Camera:
                 "dtoverlay=imx477",  # High Quality Camera
                 "dtoverlay=ov5647",  # Camera Module V1
                 "dtoverlay=arducam",
-                "dtoverlay=camera"
+                "dtoverlay=camera",
             ]
 
             for overlay in camera_overlays:
@@ -142,14 +144,18 @@ class Camera:
 
         # Test camera using libcamera-still
         try:
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=True) as temp_file:
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=True) as temp_file:
                 cmd = [
                     "libcamera-still",
-                    "-n",                           # No preview
-                    "-t", "1",                      # Timeout 1ms
-                    "-o", temp_file.name,           # Output file
-                    "--width", str(self.resolution[0]),
-                    "--height", str(self.resolution[1])
+                    "-n",  # No preview
+                    "-t",
+                    "1",  # Timeout 1ms
+                    "-o",
+                    temp_file.name,  # Output file
+                    "--width",
+                    str(self.resolution[0]),
+                    "--height",
+                    str(self.resolution[1]),
                 ]
 
                 # Add rotation if specified
@@ -159,7 +165,9 @@ class Camera:
                 result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
                 if result.returncode != 0:
-                    raise CameraError(f"Failed to initialize camera with libcamera-still: {result.stderr}")
+                    raise CameraError(
+                        f"Failed to initialize camera with libcamera-still: {result.stderr}"
+                    )
 
         except Exception as e:
             raise CameraError(f"Failed to initialize camera: {str(e)}")
@@ -184,15 +192,19 @@ class Camera:
             while not self._stop_event.is_set():
                 try:
                     # Capture using libcamera-still
-                    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=True) as temp_file:
+                    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=True) as temp_file:
                         cmd = [
                             "libcamera-still",
-                            "-n",                           # No preview
-                            "-t", "1",                      # Timeout 1ms
-                            "--immediate",                  # Capture immediately
-                            "-o", temp_file.name,           # Output file
-                            "--width", str(self.resolution[0]),
-                            "--height", str(self.resolution[1])
+                            "-n",  # No preview
+                            "-t",
+                            "1",  # Timeout 1ms
+                            "--immediate",  # Capture immediately
+                            "-o",
+                            temp_file.name,  # Output file
+                            "--width",
+                            str(self.resolution[0]),
+                            "--height",
+                            str(self.resolution[1]),
                         ]
 
                         # Add rotation if specified
@@ -212,9 +224,9 @@ class Camera:
                             continue
 
                         # Apply format conversion if needed
-                        if self.format == 'rgb':
+                        if self.format == "rgb":
                             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        elif self.format == 'gray':
+                        elif self.format == "gray":
                             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
                         # Update the current frame with thread safety
@@ -258,15 +270,19 @@ class Camera:
         # For direct capture without streaming
         if not self._is_streaming:
             # Capture a frame directly
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=True) as temp_file:
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=True) as temp_file:
                 cmd = [
                     "libcamera-still",
-                    "-n",                           # No preview
-                    "-t", "500",                    # Timeout 500ms
-                    "--immediate",                  # Capture immediately
-                    "-o", temp_file.name,           # Output file
-                    "--width", str(self.resolution[0]),
-                    "--height", str(self.resolution[1])
+                    "-n",  # No preview
+                    "-t",
+                    "500",  # Timeout 500ms
+                    "--immediate",  # Capture immediately
+                    "-o",
+                    temp_file.name,  # Output file
+                    "--width",
+                    str(self.resolution[0]),
+                    "--height",
+                    str(self.resolution[1]),
                 ]
 
                 # Add rotation if specified
@@ -285,9 +301,9 @@ class Camera:
                     raise CameraError("Failed to read captured image")
 
                 # Apply format conversion if needed
-                if self.format == 'rgb':
+                if self.format == "rgb":
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                elif self.format == 'gray':
+                elif self.format == "gray":
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
                 # Update the current frame with thread safety
@@ -319,11 +335,15 @@ class Camera:
         if filepath:
             cmd = [
                 "libcamera-still",
-                "-n",                           # No preview
-                "-t", "1000",                   # Timeout 1000ms
-                "-o", filepath,                 # Output file
-                "--width", str(self.resolution[0]),
-                "--height", str(self.resolution[1])
+                "-n",  # No preview
+                "-t",
+                "1000",  # Timeout 1000ms
+                "-o",
+                filepath,  # Output file
+                "--width",
+                str(self.resolution[0]),
+                "--height",
+                str(self.resolution[1]),
             ]
 
             # Add rotation if specified
@@ -342,9 +362,9 @@ class Camera:
                 raise CameraError(f"Failed to read captured image from {filepath}")
 
             # Apply format conversion if needed
-            if self.format == 'rgb':
+            if self.format == "rgb":
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            elif self.format == 'gray':
+            elif self.format == "gray":
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             return frame
@@ -373,18 +393,18 @@ class Camera:
             raise CameraError("Camera is not initialized")
 
         setting_mapping = {
-            'brightness': cv2.CAP_PROP_BRIGHTNESS,
-            'contrast': cv2.CAP_PROP_CONTRAST,
-            'saturation': cv2.CAP_PROP_SATURATION,
-            'hue': cv2.CAP_PROP_HUE,
-            'gain': cv2.CAP_PROP_GAIN,
-            'exposure': cv2.CAP_PROP_EXPOSURE,
-            'white_balance': cv2.CAP_PROP_WHITE_BALANCE_RED_V,
-            'focus': cv2.CAP_PROP_FOCUS,
-            'zoom': cv2.CAP_PROP_ZOOM,
-            'auto_exposure': cv2.CAP_PROP_AUTO_EXPOSURE,
-            'auto_wb': cv2.CAP_PROP_AUTO_WB,
-            'sharpness': cv2.CAP_PROP_SHARPNESS,
+            "brightness": cv2.CAP_PROP_BRIGHTNESS,
+            "contrast": cv2.CAP_PROP_CONTRAST,
+            "saturation": cv2.CAP_PROP_SATURATION,
+            "hue": cv2.CAP_PROP_HUE,
+            "gain": cv2.CAP_PROP_GAIN,
+            "exposure": cv2.CAP_PROP_EXPOSURE,
+            "white_balance": cv2.CAP_PROP_WHITE_BALANCE_RED_V,
+            "focus": cv2.CAP_PROP_FOCUS,
+            "zoom": cv2.CAP_PROP_ZOOM,
+            "auto_exposure": cv2.CAP_PROP_AUTO_EXPOSURE,
+            "auto_wb": cv2.CAP_PROP_AUTO_WB,
+            "sharpness": cv2.CAP_PROP_SHARPNESS,
         }
 
         if setting.lower() not in setting_mapping:
@@ -415,18 +435,18 @@ class Camera:
             raise CameraError("Camera is not initialized")
 
         setting_mapping = {
-            'brightness': cv2.CAP_PROP_BRIGHTNESS,
-            'contrast': cv2.CAP_PROP_CONTRAST,
-            'saturation': cv2.CAP_PROP_SATURATION,
-            'hue': cv2.CAP_PROP_HUE,
-            'gain': cv2.CAP_PROP_GAIN,
-            'exposure': cv2.CAP_PROP_EXPOSURE,
-            'white_balance': cv2.CAP_PROP_WHITE_BALANCE_RED_V,
-            'focus': cv2.CAP_PROP_FOCUS,
-            'zoom': cv2.CAP_PROP_ZOOM,
-            'auto_exposure': cv2.CAP_PROP_AUTO_EXPOSURE,
-            'auto_wb': cv2.CAP_PROP_AUTO_WB,
-            'sharpness': cv2.CAP_PROP_SHARPNESS,
+            "brightness": cv2.CAP_PROP_BRIGHTNESS,
+            "contrast": cv2.CAP_PROP_CONTRAST,
+            "saturation": cv2.CAP_PROP_SATURATION,
+            "hue": cv2.CAP_PROP_HUE,
+            "gain": cv2.CAP_PROP_GAIN,
+            "exposure": cv2.CAP_PROP_EXPOSURE,
+            "white_balance": cv2.CAP_PROP_WHITE_BALANCE_RED_V,
+            "focus": cv2.CAP_PROP_FOCUS,
+            "zoom": cv2.CAP_PROP_ZOOM,
+            "auto_exposure": cv2.CAP_PROP_AUTO_EXPOSURE,
+            "auto_wb": cv2.CAP_PROP_AUTO_WB,
+            "sharpness": cv2.CAP_PROP_SHARPNESS,
         }
 
         if setting.lower() not in setting_mapping:
@@ -445,9 +465,18 @@ class Camera:
             List[str]: List of available setting names
         """
         return [
-            'brightness', 'contrast', 'saturation', 'hue', 'gain',
-            'exposure', 'white_balance', 'focus', 'zoom',
-            'auto_exposure', 'auto_wb', 'sharpness',
+            "brightness",
+            "contrast",
+            "saturation",
+            "hue",
+            "gain",
+            "exposure",
+            "white_balance",
+            "focus",
+            "zoom",
+            "auto_exposure",
+            "auto_wb",
+            "sharpness",
         ]
 
     def close(self):
@@ -458,4 +487,3 @@ class Camera:
         if self._camera and self._camera.isOpened():
             self._camera.release()
             self._camera = None
-

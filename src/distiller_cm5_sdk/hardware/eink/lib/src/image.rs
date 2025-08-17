@@ -1,6 +1,6 @@
+use crate::config;
 use crate::error::DisplayError;
 use crate::firmware::DisplaySpec;
-use crate::config;
 
 pub fn convert_png_to_1bit_with_spec(
     filename: &str,
@@ -52,15 +52,10 @@ pub fn get_dimensions_from_spec(spec: &DisplaySpec) -> (u32, u32) {
     (spec.width, spec.height)
 }
 
-// Backwards compatibility function using configurable default firmware
-pub fn get_dimensions() -> (u32, u32) {
-    match config::get_default_spec() {
-        Ok(spec) => get_dimensions_from_spec(&spec),
-        Err(_) => {
-            log::warn!("Failed to get default firmware spec, falling back to EPD128x250");
-            (128, 250) // Fallback to original hardcoded values
-        }
-    }
+// Get dimensions using configurable default firmware
+pub fn get_dimensions() -> Result<(u32, u32), DisplayError> {
+    let spec = config::get_default_spec()?;
+    Ok(get_dimensions_from_spec(&spec))
 }
 
 pub fn create_white_image_with_spec(spec: &DisplaySpec) -> Vec<u8> {
@@ -71,24 +66,13 @@ pub fn create_black_image_with_spec(spec: &DisplaySpec) -> Vec<u8> {
     vec![0x00; spec.array_size()]
 }
 
-// Backwards compatibility functions using configurable default firmware
-pub fn create_white_image() -> Vec<u8> {
-    match config::get_default_spec() {
-        Ok(spec) => create_white_image_with_spec(&spec),
-        Err(_) => {
-            log::warn!("Failed to get default firmware spec, falling back to EPD128x250");
-            vec![0xFF; (128 * 250) / 8] // Fallback to original hardcoded size
-        }
-    }
+// Create images using configurable default firmware
+pub fn create_white_image() -> Result<Vec<u8>, DisplayError> {
+    let spec = config::get_default_spec()?;
+    Ok(create_white_image_with_spec(&spec))
 }
 
-pub fn create_black_image() -> Vec<u8> {
-    match config::get_default_spec() {
-        Ok(spec) => create_black_image_with_spec(&spec),
-        Err(_) => {
-            log::warn!("Failed to get default firmware spec, falling back to EPD128x250");
-            vec![0x00; (128 * 250) / 8] // Fallback to original hardcoded size
-        }
-    }
+pub fn create_black_image() -> Result<Vec<u8>, DisplayError> {
+    let spec = config::get_default_spec()?;
+    Ok(create_black_image_with_spec(&spec))
 }
-

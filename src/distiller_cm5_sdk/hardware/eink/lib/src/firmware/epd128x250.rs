@@ -111,4 +111,3 @@ impl Default for EPD128x250Firmware {
         Self::new()
     }
 }
-

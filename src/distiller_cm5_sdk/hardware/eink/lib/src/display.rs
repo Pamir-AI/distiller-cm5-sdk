@@ -102,7 +102,7 @@ impl<P: EinkProtocol> DisplayDriver for GenericDisplay<P> {
 pub type DefaultDisplay = GenericDisplay<crate::protocol::DefaultProtocol>;
 
 // Buffer pool for memory optimization
-#[repr(align(64))]  // Align to cache line boundary for ARM Cortex-A76
+#[repr(align(64))] // Align to cache line boundary for ARM Cortex-A76
 #[allow(dead_code)]
 struct BufferPool {
     image_buffer: Vec<u8>,
@@ -117,29 +117,29 @@ impl BufferPool {
         let mut image_buffer = Vec::with_capacity(size);
         let mut temp_buffer = Vec::with_capacity(size);
         let mut processing_buffer = Vec::with_capacity(size);
-        
+
         // Initialize to avoid uninitialized memory access
         image_buffer.resize(size, 0);
         temp_buffer.resize(size, 0);
         processing_buffer.resize(size, 0);
-        
+
         Self {
             image_buffer,
             temp_buffer,
             processing_buffer,
         }
     }
-    
+
     #[allow(dead_code)]
     fn get_image_buffer(&mut self) -> &mut [u8] {
         &mut self.image_buffer
     }
-    
+
     #[allow(dead_code)]
     fn get_temp_buffer(&mut self) -> &mut [u8] {
         &mut self.temp_buffer
     }
-    
+
     #[allow(dead_code)]
     fn get_processing_buffer(&mut self) -> &mut [u8] {
         &mut self.processing_buffer
@@ -159,7 +159,7 @@ impl GlobalDisplayState {
             buffer_pool: None,
         }
     }
-    
+
     fn ensure_buffer_pool(&mut self, size: usize) {
         if self.buffer_pool.is_none() {
             self.buffer_pool = Some(BufferPool::new(size));
@@ -175,16 +175,16 @@ pub fn display_init() -> Result<(), DisplayError> {
 
     if state.display.is_none() {
         let protocol = create_default_protocol()?;
-        
+
         // Get buffer size from protocol spec before moving it
-        let buffer_size = protocol.get_spec().array_size() * 2;  // Double size for processing
-        
+        let buffer_size = protocol.get_spec().array_size() * 2; // Double size for processing
+
         let mut display = DefaultDisplay::new(protocol);
         display.init()?;
-        
+
         // Initialize buffer pool with appropriate size for the display
         state.ensure_buffer_pool(buffer_size);
-        
+
         state.display = Some(display);
     }
 
@@ -243,8 +243,13 @@ pub fn display_cleanup() -> Result<(), DisplayError> {
 }
 
 pub fn display_get_dimensions() -> (u32, u32) {
-    // For backwards compatibility, use default firmware
-    image::get_dimensions()
+    // Return dimensions or panic if not configured
+    image::get_dimensions().unwrap_or_else(|e| {
+        panic!(
+            "Display not configured: {}. Set DISTILLER_EINK_FIRMWARE environment variable.",
+            e
+        );
+    })
 }
 
 pub fn convert_png_to_1bit(filename: &str) -> Result<Vec<u8>, DisplayError> {
@@ -269,4 +274,3 @@ pub fn display_init_with_firmware<F: crate::firmware::DisplayFirmware + 'static>
 
     Ok(())
 }
-

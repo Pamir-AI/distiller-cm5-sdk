@@ -14,6 +14,7 @@ from typing import BinaryIO
 
 class AudioError(Exception):
     """Custom exception for Audio-related errors."""
+
     pass
 
 
@@ -31,8 +32,12 @@ class Audio:
     """
 
     # Default hardware paths for PamirAI soundcard controls
-    MIC_GAIN_PATH = "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/input_gain"
-    SPEAKER_VOLUME_PATH = "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/volume_level"
+    MIC_GAIN_PATH = (
+        "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/input_gain"
+    )
+    SPEAKER_VOLUME_PATH = (
+        "/sys/devices/platform/axi/1000120000.pcie/1f00074000.i2c/i2c-1/1-0018/volume_level"
+    )
 
     @staticmethod
     def is_raspberry_pi() -> bool:
@@ -53,13 +58,15 @@ class Audio:
         """Check if this system has the PamirAI soundcard controls."""
         return os.path.exists(Audio.MIC_GAIN_PATH) and os.path.exists(Audio.SPEAKER_VOLUME_PATH)
 
-    def __init__(self,
-                sample_rate: int = 48000,
-                channels: int = 2,
-                format_type: str = "S16_LE",
-                input_device: str = "hw:0,0",
-                output_device: str = "plughw:0",
-                auto_check_config: bool = True):
+    def __init__(
+        self,
+        sample_rate: int = 48000,
+        channels: int = 2,
+        format_type: str = "S16_LE",
+        input_device: str = "hw:0,0",
+        output_device: str = "plughw:0",
+        auto_check_config: bool = True,
+    ):
         """
         Initialize the Audio object.
 
@@ -138,17 +145,14 @@ class Audio:
                 print("Volume control features will be disabled.")
 
             if not os.path.exists(Audio.SPEAKER_VOLUME_PATH):
-                print(f"Warning: Speaker volume control path not found: {Audio.SPEAKER_VOLUME_PATH}")
+                print(
+                    f"Warning: Speaker volume control path not found: {Audio.SPEAKER_VOLUME_PATH}"
+                )
                 print("Volume control features will be disabled.")
 
         # List available audio devices
         try:
-            result = subprocess.run(
-                ["arecord", "-l"],
-                capture_output=True,
-                text=True,
-                check=False
-            )
+            result = subprocess.run(["arecord", "-l"], capture_output=True, text=True, check=False)
             if result.returncode != 0 or "no soundcards found" in result.stderr:
                 print("Warning: No audio input devices detected. Continuing anyway.")
         except Exception as e:
@@ -240,10 +244,7 @@ class Audio:
         try:
             # Read from the system control file
             result = subprocess.run(
-                ["sudo", "cat", Audio.MIC_GAIN_PATH],
-                capture_output=True,
-                text=True,
-                check=False
+                ["sudo", "cat", Audio.MIC_GAIN_PATH], capture_output=True, text=True, check=False
             )
 
             if result.returncode != 0:
@@ -344,7 +345,7 @@ class Audio:
                 ["sudo", "cat", Audio.SPEAKER_VOLUME_PATH],
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
             )
 
             if result.returncode != 0:
@@ -384,10 +385,14 @@ class Audio:
         # Build command
         cmd = [
             "arecord",
-            "-D", self.input_device,
-            "-f", self.format_type,
-            "-r", str(self.sample_rate),
-            "-c", str(self.channels)
+            "-D",
+            self.input_device,
+            "-f",
+            self.format_type,
+            "-r",
+            str(self.sample_rate),
+            "-c",
+            str(self.channels),
         ]
 
         # Add duration if specified
@@ -446,9 +451,12 @@ class Audio:
                 self._record_thread.join(timeout=2)
             self._is_recording = False
 
-    def stream_record(self, callback: Callable[[bytes], None],
-                    buffer_size: int = 4096,
-                    stop_event: threading.Event | None = None) -> threading.Thread:
+    def stream_record(
+        self,
+        callback: Callable[[bytes], None],
+        buffer_size: int = 4096,
+        stop_event: threading.Event | None = None,
+    ) -> threading.Thread:
         """
         Record audio to a stream for real-time processing.
 
@@ -475,10 +483,14 @@ class Audio:
         # Build command
         cmd = [
             "arecord",
-            "-D", self.input_device,
-            "-f", self.format_type,
-            "-r", str(self.sample_rate),
-            "-c", str(self.channels)
+            "-D",
+            self.input_device,
+            "-f",
+            self.format_type,
+            "-r",
+            str(self.sample_rate),
+            "-c",
+            str(self.channels),
         ]
 
         def stream_thread():
@@ -529,11 +541,7 @@ class Audio:
             raise AudioError(f"Audio file not found: {filepath}")
 
         # Build command
-        cmd = [
-            "aplay",
-            "-D", self.output_device,
-            filepath
-        ]
+        cmd = ["aplay", "-D", self.output_device, filepath]
 
         try:
             with self._lock:
@@ -577,10 +585,13 @@ class Audio:
             if self._play_thread and self._play_thread.is_alive():
                 self._play_thread.join(timeout=2)
 
-    def stream_play(self, audio_data: bytes | BinaryIO,
-                 format_type: str | None = None,
-                 sample_rate: int | None = None,
-                 channels: int | None = None) -> None:
+    def stream_play(
+        self,
+        audio_data: bytes | BinaryIO,
+        format_type: str | None = None,
+        sample_rate: int | None = None,
+        channels: int | None = None,
+    ) -> None:
         """
         Play audio from a stream (bytes or file-like object).
 
@@ -602,13 +613,7 @@ class Audio:
         chans = channels or self.channels
 
         # Build command
-        cmd = [
-            "aplay",
-            "-D", self.output_device,
-            "-f", fmt,
-            "-r", str(rate),
-            "-c", str(chans)
-        ]
+        cmd = ["aplay", "-D", self.output_device, "-f", fmt, "-r", str(rate), "-c", str(chans)]
 
         try:
             with self._lock:

@@ -139,16 +139,20 @@ impl<G: GpioController, S: SpiController, F: DisplayFirmware> EinkProtocol
 // Type alias for the default protocol using current firmware
 // Runtime firmware selection
 pub enum ConfigurableProtocol {
-    EPD128x250(GenericEinkProtocol<
-        crate::hardware::DefaultGpioController,
-        crate::hardware::DefaultSpiController,
-        crate::firmware::EPD128x250Firmware,
-    >),
-    EPD240x416(GenericEinkProtocol<
-        crate::hardware::DefaultGpioController,
-        crate::hardware::DefaultSpiController,
-        crate::firmware::EPD240x416Firmware,
-    >),
+    EPD128x250(
+        GenericEinkProtocol<
+            crate::hardware::DefaultGpioController,
+            crate::hardware::DefaultSpiController,
+            crate::firmware::EPD128x250Firmware,
+        >,
+    ),
+    EPD240x416(
+        GenericEinkProtocol<
+            crate::hardware::DefaultGpioController,
+            crate::hardware::DefaultSpiController,
+            crate::firmware::EPD240x416Firmware,
+        >,
+    ),
 }
 
 impl EinkProtocol for ConfigurableProtocol {
@@ -158,63 +162,63 @@ impl EinkProtocol for ConfigurableProtocol {
             ConfigurableProtocol::EPD240x416(p) => p.init_hardware(),
         }
     }
-    
+
     fn init_partial(&mut self) -> Result<(), DisplayError> {
         match self {
             ConfigurableProtocol::EPD128x250(p) => p.init_partial(),
             ConfigurableProtocol::EPD240x416(p) => p.init_partial(),
         }
     }
-    
+
     fn write_cmd(&mut self, cmd: u8) -> Result<(), DisplayError> {
         match self {
             ConfigurableProtocol::EPD128x250(p) => p.write_cmd(cmd),
             ConfigurableProtocol::EPD240x416(p) => p.write_cmd(cmd),
         }
     }
-    
+
     fn write_data(&mut self, data: u8) -> Result<(), DisplayError> {
         match self {
             ConfigurableProtocol::EPD128x250(p) => p.write_data(data),
             ConfigurableProtocol::EPD240x416(p) => p.write_data(data),
         }
     }
-    
+
     fn write_image_data(&mut self, data: &[u8]) -> Result<(), DisplayError> {
         match self {
             ConfigurableProtocol::EPD128x250(p) => p.write_image_data(data),
             ConfigurableProtocol::EPD240x416(p) => p.write_image_data(data),
         }
     }
-    
+
     fn check_status(&mut self) -> Result<(), DisplayError> {
         match self {
             ConfigurableProtocol::EPD128x250(p) => p.check_status(),
             ConfigurableProtocol::EPD240x416(p) => p.check_status(),
         }
     }
-    
+
     fn update_display(&mut self, mode: DisplayMode) -> Result<(), DisplayError> {
         match self {
             ConfigurableProtocol::EPD128x250(p) => p.update_display(mode),
             ConfigurableProtocol::EPD240x416(p) => p.update_display(mode),
         }
     }
-    
+
     fn sleep(&mut self) -> Result<(), DisplayError> {
         match self {
             ConfigurableProtocol::EPD128x250(p) => p.sleep(),
             ConfigurableProtocol::EPD240x416(p) => p.sleep(),
         }
     }
-    
+
     fn get_spec(&self) -> &crate::firmware::DisplaySpec {
         match self {
             ConfigurableProtocol::EPD128x250(p) => p.get_spec(),
             ConfigurableProtocol::EPD240x416(p) => p.get_spec(),
         }
     }
-    
+
     fn get_write_ram_command(&self) -> u8 {
         match self {
             ConfigurableProtocol::EPD128x250(p) => p.get_write_ram_command(),
@@ -228,13 +232,10 @@ pub type DefaultProtocol = ConfigurableProtocol;
 // Helper function to create default protocol
 pub fn create_default_protocol() -> Result<DefaultProtocol, DisplayError> {
     let hardware = crate::hardware::DefaultHardwareInterface::new()?;
-    
-    // Get the configured firmware type and create appropriate protocol variant
-    let firmware_type = crate::config::get_default_firmware().unwrap_or_else(|e| {
-        log::warn!("Failed to get configured firmware: {}, using EPD128x250", e);
-        crate::config::FirmwareType::EPD128x250
-    });
-    
+
+    // Get the configured firmware type - fail if not configured
+    let firmware_type = crate::config::get_default_firmware()?;
+
     match firmware_type {
         crate::config::FirmwareType::EPD128x250 => {
             let firmware = crate::firmware::EPD128x250Firmware::new();
@@ -263,4 +264,3 @@ pub fn create_protocol_with_firmware<F: DisplayFirmware>(
     let hardware = crate::hardware::DefaultHardwareInterface::new()?;
     Ok(GenericEinkProtocol::new(hardware, firmware))
 }
-

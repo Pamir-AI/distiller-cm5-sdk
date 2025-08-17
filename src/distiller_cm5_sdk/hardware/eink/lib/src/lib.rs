@@ -9,7 +9,10 @@ pub mod image_processing;
 pub mod protocol;
 
 // Re-export public API
-pub use config::{FirmwareType, set_default_firmware, set_default_firmware_from_str, get_default_firmware, initialize_config};
+pub use config::{
+    FirmwareType, get_default_firmware, initialize_config, set_default_firmware,
+    set_default_firmware_from_str,
+};
 pub use display::{DefaultDisplay, DisplayDriver, GenericDisplay};
 pub use error::DisplayError;
 pub use firmware::{Command, CommandSequence, DisplayFirmware, DisplaySpec};
@@ -24,4 +27,3 @@ pub use display::{
 };
 
 // C FFI is automatically available through the ffi module
-

@@ -7,8 +7,7 @@ from distiller_cm5_sdk import get_model_path
 from distiller_cm5_sdk.hardware.audio.audio import Audio
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("Piper")
 
@@ -59,12 +58,12 @@ class Piper:
 
     def find_hw_by_name(self, card_name):
         try:
-            result = subprocess.run(['aplay', '-l'], capture_output=True, text=True, check=True)
+            result = subprocess.run(["aplay", "-l"], capture_output=True, text=True, check=True)
             lines = result.stdout.splitlines()
 
             for line in lines:
-                if 'card' in line and card_name in line:
-                    match = re.search(r'card (\d+):', line)
+                if "card" in line and card_name in line:
+                    match = re.search(r"card (\d+):", line)
                     if match:
                         card_num = match.group(1)
                         logger.info(f"Piper: Found sound card '{card_name}' with number {card_num}")
@@ -100,10 +99,10 @@ class Piper:
             raise ValueError(f"Piper: Error streaming audio: {str(e)}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     piper = Piper()
     text_t = "Hello, this is a test."
     output_file_path_t = piper.get_wav_file_path(text_t)
-    print("output_file_path:",output_file_path_t)
+    print("output_file_path:", output_file_path_t)
     # Example using the sound card by name
     piper.speak_stream(text_t, 30, "snd_rpi_pamir_ai_soundcard")

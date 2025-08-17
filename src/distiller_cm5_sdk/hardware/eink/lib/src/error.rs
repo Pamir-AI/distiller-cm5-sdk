@@ -19,4 +19,3 @@ pub enum DisplayError {
     #[error("Configuration error: {0}")]
     Config(String),
 }
-
