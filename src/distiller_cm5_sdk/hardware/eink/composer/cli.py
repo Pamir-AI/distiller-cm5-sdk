@@ -133,8 +133,12 @@ Examples:
     add_image_parser.add_argument("--y", type=int, default=0, help="Y position")
     add_image_parser.add_argument("--width", type=int, help="Target width")
     add_image_parser.add_argument("--height", type=int, help="Target height")
-    add_image_parser.add_argument("--resize-mode", choices=["stretch", "fit", "crop"], default="fit")
-    add_image_parser.add_argument("--dither", choices=["floyd-steinberg", "threshold", "none"], default="floyd-steinberg")
+    add_image_parser.add_argument(
+        "--resize-mode", choices=["stretch", "fit", "crop"], default="fit"
+    )
+    add_image_parser.add_argument(
+        "--dither", choices=["floyd-steinberg", "threshold", "none"], default="floyd-steinberg"
+    )
     add_image_parser.add_argument("--brightness", type=float, default=1.0)
     add_image_parser.add_argument("--contrast", type=float, default=0.0)
     add_image_parser.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270])
@@ -149,7 +153,9 @@ Examples:
     add_text_parser.add_argument("text", help="Text to display")
     add_text_parser.add_argument("--x", type=int, default=0, help="X position")
     add_text_parser.add_argument("--y", type=int, default=0, help="Y position")
-    add_text_parser.add_argument("--color", type=int, default=0, help="Text color (0=black, 255=white)")
+    add_text_parser.add_argument(
+        "--color", type=int, default=0, help="Text color (0=black, 255=white)"
+    )
     add_text_parser.add_argument("--font-size", type=int, default=1, help="Font scale factor")
     add_text_parser.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270])
     add_text_parser.add_argument("--flip-h", action="store_true")
@@ -164,8 +170,12 @@ Examples:
     add_rect_parser.add_argument("--y", type=int, default=0, help="Y position")
     add_rect_parser.add_argument("--width", type=int, default=10, help="Rectangle width")
     add_rect_parser.add_argument("--height", type=int, default=10, help="Rectangle height")
-    add_rect_parser.add_argument("--filled", type=lambda x: x.lower() in ['true', '1', 'yes'], default=True)
-    add_rect_parser.add_argument("--color", type=int, default=0, help="Fill color (0=black, 255=white)")
+    add_rect_parser.add_argument(
+        "--filled", type=lambda x: x.lower() in ["true", "1", "yes"], default=True
+    )
+    add_rect_parser.add_argument(
+        "--color", type=int, default=0, help="Fill color (0=black, 255=white)"
+    )
     add_rect_parser.add_argument("--border-width", type=int, default=1)
 
     # Remove command
@@ -210,7 +220,9 @@ Examples:
 
     # Hardware command
     hardware_parser = subparsers.add_parser("hardware", help="Hardware control commands")
-    hardware_parser.add_argument("hw_command", choices=["info", "clear", "sleep"], help="Hardware command")
+    hardware_parser.add_argument(
+        "hw_command", choices=["info", "clear", "sleep"], help="Hardware command"
+    )
 
     # Template command
     template_parser = subparsers.add_parser("template", help="Render and display templates")
@@ -412,8 +424,12 @@ def main():
                 print(f"✓ Preview saved to {args.save_preview}")
 
             # Display on hardware
+            # Convert boolean rotate to RotationMode
+            from .. import RotationMode
+
+            rotation = RotationMode.ROTATE_90 if args.rotate else RotationMode.NONE
             success = session.composer.display(
-                mode=mode, rotate=args.rotate, flip_h=args.flip_h, flip_v=args.flip_v
+                mode=mode, rotation=rotation, flip_h=args.flip_h, flip_v=args.flip_v
             )
 
             if success:

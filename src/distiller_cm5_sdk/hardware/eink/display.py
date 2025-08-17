@@ -53,6 +53,15 @@ class DitheringMethod(IntEnum):
     SIMPLE = 1  # Fast threshold conversion
 
 
+class RotationMode(IntEnum):
+    """Image rotation modes."""
+
+    NONE = 0  # No rotation
+    ROTATE_90 = 1  # 90 degrees clockwise
+    ROTATE_180 = 2  # 180 degrees
+    ROTATE_270 = 3  # 270 degrees clockwise (equivalent to 90 CCW)
+
+
 class ImageCacheManager:
     """
     Manages caching of converted images to avoid repeated processing.
@@ -146,8 +155,9 @@ class ImageCacheManager:
         display_height: int,
         scaling: int,
         dithering: int,
-        rotate: bool,
-        flop: bool,
+        rotation: int,
+        h_flip: bool,
+        v_flip: bool,
         crop_x: int | None,
         crop_y: int | None,
     ) -> str:
@@ -170,8 +180,9 @@ class ImageCacheManager:
             "height": display_height,
             "scaling": scaling,
             "dithering": dithering,
-            "rotate": rotate,
-            "flop": flop,
+            "rotation": rotation,
+            "h_flip": h_flip,
+            "v_flip": v_flip,
             "crop_x": crop_x,
             "crop_y": crop_y,
         }
@@ -187,8 +198,9 @@ class ImageCacheManager:
         display_height: int,
         scaling: int,
         dithering: int,
-        rotate: bool,
-        flop: bool,
+        rotation: int,
+        h_flip: bool,
+        v_flip: bool,
         crop_x: int | None,
         crop_y: int | None,
     ) -> str | None:
@@ -205,8 +217,9 @@ class ImageCacheManager:
                 display_height,
                 scaling,
                 dithering,
-                rotate,
-                flop,
+                rotation,
+                h_flip,
+                v_flip,
                 crop_x,
                 crop_y,
             )
@@ -233,8 +246,9 @@ class ImageCacheManager:
         display_height: int,
         scaling: int,
         dithering: int,
-        rotate: bool,
-        flop: bool,
+        rotation: int,
+        h_flip: bool,
+        v_flip: bool,
         crop_x: int | None,
         crop_y: int | None,
         temp_path: str,
@@ -256,8 +270,9 @@ class ImageCacheManager:
                 display_height,
                 scaling,
                 dithering,
-                rotate,
-                flop,
+                rotation,
+                h_flip,
+                v_flip,
                 crop_x,
                 crop_y,
             )
@@ -277,8 +292,9 @@ class ImageCacheManager:
                     "height": display_height,
                     "scaling": scaling,
                     "dithering": dithering,
-                    "rotate": rotate,
-                    "flop": flop,
+                    "rotation": rotation,
+                    "h_flip": h_flip,
+                    "v_flip": v_flip,
                     "crop_x": crop_x,
                     "crop_y": crop_y,
                 },
@@ -550,17 +566,18 @@ class Display:
 
         # New image processing functions (optional - may not exist in older libraries)
         try:
-            # process_image_auto(filename, output_data, scaling, dithering, rotate, flip, crop_x, crop_y) -> bool
+            # process_image_auto(filename, output_data, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y) -> bool
             self._lib.process_image_auto.restype = c_bool
             self._lib.process_image_auto.argtypes = [
                 c_char_p,
                 ctypes.POINTER(ctypes.c_ubyte),
-                ctypes.c_int,
-                ctypes.c_int,
-                ctypes.c_int,
-                ctypes.c_int,
-                ctypes.c_int,
-                ctypes.c_int,
+                ctypes.c_int,  # scaling
+                ctypes.c_int,  # dithering
+                ctypes.c_int,  # rotation
+                ctypes.c_int,  # h_flip
+                ctypes.c_int,  # v_flip
+                ctypes.c_int,  # crop_x
+                ctypes.c_int,  # crop_y
             ]
 
             # is_image_format_supported(filename) -> bool
@@ -648,7 +665,7 @@ class Display:
                 height_ptr = ctypes.pointer(c_uint32())
                 self._lib.display_get_dimensions(width_ptr, height_ptr)
                 return (width_ptr.contents.value, height_ptr.contents.value)
-            except (AttributeError, TypeError, OSError) as e:
+            except (AttributeError, TypeError, OSError):
                 if self.WIDTH is None or self.HEIGHT is None:
                     raise DisplayError(
                         "Display dimensions not configured. "
@@ -693,8 +710,9 @@ class Display:
         self,
         image: str | bytes,
         mode: DisplayMode = DisplayMode.FULL,
-        rotate: bool = False,
-        flip_horizontal: bool = False,
+        rotation: RotationMode = RotationMode.NONE,
+        h_flip: bool = False,
+        v_flip: bool = False,
         invert_colors: bool = False,
         src_width: int = None,
         src_height: int = None,
@@ -705,8 +723,9 @@ class Display:
         Args:
             image: Either a PNG file path (string) or raw 1-bit image data (bytes)
             mode: Display refresh mode
-            rotate: If True, rotate landscape data (250x128) to portrait (128x250)
-            flip_horizontal: If True, mirror the image horizontally (left-right)
+            rotation: Rotation mode (NONE, ROTATE_90, ROTATE_180, ROTATE_270)
+            h_flip: If True, mirror the image horizontally (left-right)
+            v_flip: If True, mirror the image vertically (top-bottom)
             invert_colors: If True, invert colors (black↔white)
             src_width: Source width in pixels (required when transforming raw data)
             src_height: Source height in pixels (required when transforming raw data)
@@ -721,23 +740,29 @@ class Display:
             # Validate file path for security
             self._validate_path(image)
             # PNG file path
-            self._display_png(image, mode, rotate, flip_horizontal, invert_colors)
+            self._display_png(image, mode, rotation, h_flip, v_flip, invert_colors)
         elif isinstance(image, bytes | bytearray):
             # Raw image data
             raw_data = bytes(image)
 
-            if flip_horizontal or rotate or invert_colors:
+            if h_flip or v_flip or rotation != RotationMode.NONE or invert_colors:
                 if src_width is None or src_height is None:
                     raise DisplayError(
                         "src_width and src_height are required when transforming raw data"
                     )
 
-                # Apply transformations in DistillerGUI order: flip, rotate, then invert colors
-                if flip_horizontal:
-                    raw_data = flip_bitpacked_horizontal(raw_data, src_width, src_height)
+                # Apply transformations in order: h_flip, v_flip, rotate, then invert colors
+                if h_flip:
+                    raw_data = h_flip_bitpacked(raw_data, src_width, src_height)
 
-                if rotate:
-                    # If we flipped, dimensions stay the same for rotation
+                if v_flip:
+                    raw_data = v_flip_bitpacked(raw_data, src_width, src_height)
+
+                if rotation == RotationMode.ROTATE_90:
+                    raw_data = rotate_bitpacked_cw_90(raw_data, src_width, src_height)
+                elif rotation == RotationMode.ROTATE_180:
+                    raw_data = rotate_bitpacked_180(raw_data, src_width, src_height)
+                elif rotation == RotationMode.ROTATE_270:
                     raw_data = rotate_bitpacked_ccw_90(raw_data, src_width, src_height)
 
                 if invert_colors:
@@ -751,8 +776,9 @@ class Display:
         self,
         filename: str,
         mode: DisplayMode,
-        rotate: bool = False,
-        flip_horizontal: bool = False,
+        rotation: RotationMode = RotationMode.NONE,
+        h_flip: bool = False,
+        v_flip: bool = False,
         invert_colors: bool = False,
     ) -> None:
         """Display a PNG image file."""
@@ -760,17 +786,25 @@ class Display:
         if not os.path.exists(filename):
             raise DisplayError(f"PNG file not found: {filename}")
 
-        if rotate or flip_horizontal or invert_colors:
+        if rotation != RotationMode.NONE or h_flip or v_flip or invert_colors:
             # For PNG transformations, convert to raw data first
             raw_data = self.convert_png_to_raw(filename)
             # Assume PNG is 250x128 landscape format when transforming
+            src_width, src_height = 250, 128
 
-            # Apply transformations in DistillerGUI order: flip, rotate, then invert colors
-            if flip_horizontal:
-                raw_data = flip_bitpacked_horizontal(raw_data, 250, 128)
+            # Apply transformations in order: h_flip, v_flip, rotate, then invert colors
+            if h_flip:
+                raw_data = h_flip_bitpacked(raw_data, src_width, src_height)
 
-            if rotate:
-                raw_data = rotate_bitpacked_ccw_90(raw_data, 250, 128)
+            if v_flip:
+                raw_data = v_flip_bitpacked(raw_data, src_width, src_height)
+
+            if rotation == RotationMode.ROTATE_90:
+                raw_data = rotate_bitpacked_cw_90(raw_data, src_width, src_height)
+            elif rotation == RotationMode.ROTATE_180:
+                raw_data = rotate_bitpacked_180(raw_data, src_width, src_height)
+            elif rotation == RotationMode.ROTATE_270:
+                raw_data = rotate_bitpacked_ccw_90(raw_data, src_width, src_height)
 
             if invert_colors:
                 raw_data = invert_bitpacked_colors(raw_data)
@@ -952,8 +986,9 @@ class Display:
         image_path: str,
         scaling: ScalingMethod = ScalingMethod.LETTERBOX,
         dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-        rotate: bool = False,
-        flop: bool = False,
+        rotation: RotationMode = RotationMode.NONE,
+        h_flip: bool = False,
+        v_flip: bool = False,
         crop_x: int | None = None,
         crop_y: int | None = None,
     ) -> bytes:
@@ -975,13 +1010,15 @@ class Display:
         crop_x_val = -1 if crop_x is None else crop_x
         crop_y_val = -1 if crop_y is None else crop_y
 
+        # Pass full rotation enum value to Rust library
         success = self._lib.process_image_auto(
             filename_bytes,
             output_data,
             int(scaling),
             int(dithering),
-            int(rotate),
-            int(flop),
+            int(rotation),
+            int(h_flip),
+            int(v_flip),
             crop_x_val,
             crop_y_val,
         )
@@ -1032,8 +1069,9 @@ class Display:
         image_path: str,
         scaling: ScalingMethod = ScalingMethod.LETTERBOX,
         dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-        rotate: bool = False,
-        flop: bool = False,
+        rotation: RotationMode = RotationMode.NONE,
+        h_flip: bool = False,
+        v_flip: bool = False,
         crop_x: int | None = None,
         crop_y: int | None = None,
     ) -> str:
@@ -1045,8 +1083,9 @@ class Display:
             image_path: Path to source image file (PNG, JPEG, BMP, TIFF, WebP, etc.)
             scaling: How to scale the image to fit display
             dithering: Dithering method for 1-bit conversion
-            rotate: If True, rotate image 90 degrees counter-clockwise
-            flop: If True, flip image horizontally (left-right mirror)
+            rotation: Rotation mode (NONE, ROTATE_90, ROTATE_180, ROTATE_270)
+            h_flip: If True, flip image horizontally (left-right mirror)
+            v_flip: If True, flip image vertically (top-bottom mirror)
             crop_x: X position for crop when using CROP_CENTER (None = center)
             crop_y: Y position for crop when using CROP_CENTER (None = center)
 
@@ -1073,8 +1112,9 @@ class Display:
                 display_height,
                 int(scaling),
                 int(dithering),
-                rotate,
-                flop,
+                int(rotation),
+                h_flip,
+                v_flip,
                 crop_x,
                 crop_y,
             )
@@ -1086,7 +1126,7 @@ class Display:
             try:
                 # Get raw data from Rust processing
                 raw_data = self._convert_image_rust(
-                    image_path, scaling, dithering, rotate, flop, crop_x, crop_y
+                    image_path, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
                 )
 
                 # Save to temporary PNG file
@@ -1119,8 +1159,9 @@ class Display:
                             display_height,
                             int(scaling),
                             int(dithering),
-                            rotate,
-                            flop,
+                            int(rotation),
+                            h_flip,
+                            v_flip,
                             crop_x,
                             crop_y,
                             temp_path,
@@ -1146,11 +1187,17 @@ class Display:
                 if img.mode not in ("RGB", "L"):
                     img = img.convert("RGB")
 
-                # Apply transformations (rotate, flop)
-                if flop:
+                # Apply transformations (h_flip, v_flip, rotation)
+                if h_flip:
                     img = img.transpose(Image.FLIP_LEFT_RIGHT)
-                if rotate:
-                    img = img.transpose(Image.ROTATE_90)
+                if v_flip:
+                    img = img.transpose(Image.FLIP_TOP_BOTTOM)
+                if rotation == RotationMode.ROTATE_90:
+                    img = img.transpose(Image.ROTATE_270)  # PIL ROTATE_270 = 90 CW
+                elif rotation == RotationMode.ROTATE_180:
+                    img = img.transpose(Image.ROTATE_180)
+                elif rotation == RotationMode.ROTATE_270:
+                    img = img.transpose(Image.ROTATE_90)  # PIL ROTATE_90 = 90 CCW
 
                 # Scale the image based on method
                 processed_img = self._scale_image(
@@ -1177,8 +1224,9 @@ class Display:
                             display_height,
                             int(scaling),
                             int(dithering),
-                            rotate,
-                            flop,
+                            int(rotation),
+                            h_flip,
+                            v_flip,
                             crop_x,
                             crop_y,
                             temp_path,
@@ -1278,8 +1326,9 @@ class Display:
         mode: DisplayMode = DisplayMode.FULL,
         scaling: ScalingMethod = ScalingMethod.LETTERBOX,
         dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-        rotate: bool = False,
-        flop: bool = False,
+        rotation: RotationMode = RotationMode.NONE,
+        h_flip: bool = False,
+        v_flip: bool = False,
         crop_x: int | None = None,
         crop_y: int | None = None,
         cleanup_temp: bool = True,
@@ -1293,8 +1342,9 @@ class Display:
             mode: Display refresh mode
             scaling: How to scale the image to fit display
             dithering: Dithering method for 1-bit conversion
-            rotate: If True, rotate image 90 degrees counter-clockwise
-            flop: If True, flip image horizontally (left-right mirror)
+            rotation: Rotation mode (NONE, ROTATE_90, ROTATE_180, ROTATE_270)
+            h_flip: If True, flip image horizontally (left-right mirror)
+            v_flip: If True, flip image vertically (top-bottom mirror)
             crop_x: X position for crop when using CROP_CENTER (None = center)
             crop_y: Y position for crop when using CROP_CENTER (None = center)
             cleanup_temp: Whether to cleanup temporary files
@@ -1309,11 +1359,11 @@ class Display:
         try:
             # Convert image to display format
             temp_path = self._convert_png_auto(
-                image_path, scaling, dithering, rotate, flop, crop_x, crop_y
+                image_path, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
             )
 
             # Display the converted image
-            self.display_image(temp_path, mode, rotate=False)
+            self.display_image(temp_path, mode, rotation=RotationMode.NONE)
             return True
 
         except Exception as e:
@@ -1338,8 +1388,9 @@ class Display:
         mode: DisplayMode = DisplayMode.FULL,
         scaling: ScalingMethod = ScalingMethod.LETTERBOX,
         dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-        rotate: bool = False,
-        flop: bool = False,
+        rotation: RotationMode = RotationMode.NONE,
+        h_flip: bool = False,
+        v_flip: bool = False,
         crop_x: int | None = None,
         crop_y: int | None = None,
     ) -> bool:
@@ -1347,79 +1398,19 @@ class Display:
         Alias for display_png_auto that better reflects multi-format support.
         """
         return self.display_png_auto(
-            image_path, mode, scaling, dithering, rotate, flop, crop_x, crop_y
+            image_path, mode, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
         )
 
 
 # Convenience functions for simple usage (following SDK pattern)
-def display_png(
-    filename: str,
-    mode: DisplayMode = DisplayMode.FULL,
-    rotate: bool = False,
-    auto_convert: bool = False,
-    scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-    dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-    flop: bool = False,
-    crop_x: int | None = None,
-    crop_y: int | None = None,
-) -> None:
-    """
-    Convenience function to display a PNG image.
-
-    Args:
-        filename: Path to PNG file
-        mode: Display refresh mode
-        rotate: If True, rotate landscape PNG (250x128) to portrait (128x250)
-        auto_convert: If True, automatically convert any PNG to display format
-        scaling: How to scale the image to fit display (only used with auto_convert)
-        dithering: Dithering method for 1-bit conversion (only used with auto_convert)
-        flop: If True, flip image horizontally (only used with auto_convert)
-        crop_x: X position for crop when using CROP_CENTER with auto_convert (None = center)
-        crop_y: Y position for crop when using CROP_CENTER with auto_convert (None = center)
-    """
-    with Display() as display:
-        if auto_convert:
-            display.display_png_auto(
-                filename, mode, scaling, dithering, rotate, flop, crop_x, crop_y
-            )
-        else:
-            display.display_image(filename, mode, rotate)
-
-
-def display_png_auto(
-    filename: str,
-    mode: DisplayMode = DisplayMode.FULL,
-    scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-    dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-    rotate: bool = False,
-    flop: bool = False,
-    crop_x: int | None = None,
-    crop_y: int | None = None,
-) -> None:
-    """
-    Convenience function to display any PNG image with automatic conversion.
-
-    Args:
-        filename: Path to PNG file (any size, any format)
-        mode: Display refresh mode
-        scaling: How to scale the image to fit display
-        dithering: Dithering method for 1-bit conversion
-        rotate: If True, rotate image 90 degrees counter-clockwise
-        flop: If True, flip image horizontally (left-right mirror)
-        crop_x: X position for crop when using CROP_CENTER (None = center)
-        crop_y: Y position for crop when using CROP_CENTER (None = center)
-    """
-    with Display() as display:
-        display.display_png_auto(filename, mode, scaling, dithering, rotate, flop, crop_x, crop_y)
-
-
 def display_image_auto(
     filename: str,
     mode: DisplayMode = DisplayMode.FULL,
     scaling: ScalingMethod = ScalingMethod.LETTERBOX,
     dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-    rotate: bool = False,
-    flop: bool = False,
+    rotation: RotationMode = RotationMode.NONE,
+    h_flip: bool = False,
+    v_flip: bool = False,
     crop_x: int | None = None,
     crop_y: int | None = None,
 ) -> None:
@@ -1432,13 +1423,16 @@ def display_image_auto(
         mode: Display refresh mode
         scaling: How to scale the image to fit display
         dithering: Dithering method for 1-bit conversion
-        rotate: If True, rotate image 90 degrees counter-clockwise
-        flop: If True, flip image horizontally (left-right mirror)
+        rotation: Rotation mode (NONE, ROTATE_90, ROTATE_180, ROTATE_270)
+        h_flip: If True, flip image horizontally (left-right mirror)
+        v_flip: If True, flip image vertically (top-bottom mirror)
         crop_x: X position for crop when using CROP_CENTER (None = center)
         crop_y: Y position for crop when using CROP_CENTER (None = center)
     """
     with Display() as display:
-        display.display_png_auto(filename, mode, scaling, dithering, rotate, flop, crop_x, crop_y)
+        display.display_png_auto(
+            filename, mode, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
+        )
 
 
 def clear_display() -> None:
@@ -1453,7 +1447,7 @@ def get_display_info() -> dict:
 
     Returns:
         Dictionary with display specs
-        
+
     Raises:
         DisplayError: If display is not configured
     """
@@ -1528,7 +1522,110 @@ def rotate_bitpacked_ccw_90(src_data: bytes, src_width: int, src_height: int) ->
     return bytes(dst_data)
 
 
-def flip_bitpacked_horizontal(src_data: bytes, src_width: int, src_height: int) -> bytes:
+def rotate_bitpacked_cw_90(src_data: bytes, src_width: int, src_height: int) -> bytes:
+    """
+    Rotate 1-bit packed bitmap data 90 degrees clockwise.
+
+    Args:
+        src_data: Source 1-bit packed image data
+        src_width: Source image width in pixels
+        src_height: Source image height in pixels
+
+    Returns:
+        Rotated 1-bit packed data with dimensions (src_height x src_width)
+
+    Raises:
+        ValueError: If data size doesn't match expected size
+    """
+    # Validate input data size
+    expected_bytes = (src_width * src_height + 7) // 8
+    if len(src_data) < expected_bytes:
+        raise ValueError(
+            f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
+        )
+
+    # Calculate destination dimensions and buffer size
+    dst_width = src_height
+    dst_height = src_width
+    dst_bytes = (dst_width * dst_height + 7) // 8
+
+    # Initialize destination buffer (all zeros = white)
+    dst_data = bytearray(dst_bytes)
+
+    # For each pixel in source
+    for src_y in range(src_height):
+        for src_x in range(src_width):
+            # Get bit from source - MSB first
+            src_bit_idx = src_y * src_width + src_x
+            src_byte_idx = src_bit_idx // 8
+            src_bit_pos = 7 - (src_bit_idx % 8)  # MSB first
+            src_bit = (src_data[src_byte_idx] >> src_bit_pos) & 1
+
+            # Calculate destination coordinates (clockwise rotation)
+            dst_x = src_height - 1 - src_y
+            dst_y = src_x
+
+            # Set bit in destination - MSB first
+            dst_bit_idx = dst_y * dst_width + dst_x
+            dst_byte_idx = dst_bit_idx // 8
+            dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
+
+            if src_bit:
+                dst_data[dst_byte_idx] |= 1 << dst_bit_pos
+
+    return bytes(dst_data)
+
+
+def rotate_bitpacked_180(src_data: bytes, src_width: int, src_height: int) -> bytes:
+    """
+    Rotate 1-bit packed bitmap data 180 degrees.
+
+    Args:
+        src_data: Source 1-bit packed image data
+        src_width: Source image width in pixels
+        src_height: Source image height in pixels
+
+    Returns:
+        Rotated 1-bit packed data with same dimensions
+
+    Raises:
+        ValueError: If data size doesn't match expected size
+    """
+    # Validate input data size
+    expected_bytes = (src_width * src_height + 7) // 8
+    if len(src_data) < expected_bytes:
+        raise ValueError(
+            f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
+        )
+
+    # Initialize destination buffer (same size as source)
+    dst_data = bytearray(expected_bytes)
+
+    # For each pixel in source
+    for src_y in range(src_height):
+        for src_x in range(src_width):
+            # Get bit from source - MSB first
+            src_bit_idx = src_y * src_width + src_x
+            src_byte_idx = src_bit_idx // 8
+            src_bit_pos = 7 - (src_bit_idx % 8)  # MSB first
+            src_bit = (src_data[src_byte_idx] >> src_bit_pos) & 1
+
+            # Calculate destination coordinates (180 degree rotation)
+            dst_x = src_width - 1 - src_x
+            dst_y = src_height - 1 - src_y
+
+            # Set bit in destination - MSB first
+            dst_bit_idx = dst_y * src_width + dst_x
+            dst_byte_idx = dst_bit_idx // 8
+            dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
+
+            if src_bit:
+                dst_data[dst_byte_idx] |= 1 << dst_bit_pos
+
+    return bytes(dst_data)
+
+
+def h_flip_bitpacked(src_data: bytes, src_width: int, src_height: int) -> bytes:
     """
     Flip 1-bit packed bitmap data horizontally (left-right mirror).
 
@@ -1570,6 +1667,57 @@ def flip_bitpacked_horizontal(src_data: bytes, src_width: int, src_height: int) 
 
             # Set bit in flipped position
             dst_bit_idx = y * src_width + flipped_x
+            dst_byte_idx = dst_bit_idx // 8
+            dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
+
+            if src_bit:
+                dst_data[dst_byte_idx] |= 1 << dst_bit_pos
+
+    return bytes(dst_data)
+
+
+def v_flip_bitpacked(src_data: bytes, src_width: int, src_height: int) -> bytes:
+    """
+    Flip 1-bit packed bitmap data vertically (top-bottom mirror).
+
+    This function mirrors the image vertically, which is useful for correcting
+    display orientation issues or inverted content.
+
+    Args:
+        src_data: Source 1-bit packed image data
+        src_width: Source image width in pixels
+        src_height: Source image height in pixels
+
+    Returns:
+        Vertically flipped 1-bit packed data with same dimensions
+
+    Raises:
+        ValueError: If data size doesn't match expected size
+    """
+    # Validate input data size
+    expected_bytes = (src_width * src_height + 7) // 8
+    if len(src_data) < expected_bytes:
+        raise ValueError(
+            f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
+        )
+
+    # Initialize destination buffer (same size as source)
+    dst_data = bytearray(expected_bytes)
+
+    # Flip vertically: for each column, reverse the row order
+    for y in range(src_height):
+        for x in range(src_width):
+            # Get bit from source position
+            src_bit_idx = y * src_width + x
+            src_byte_idx = src_bit_idx // 8
+            src_bit_pos = 7 - (src_bit_idx % 8)  # MSB first
+            src_bit = (src_data[src_byte_idx] >> src_bit_pos) & 1
+
+            # Calculate flipped y position (mirror vertically)
+            flipped_y = src_height - 1 - y
+
+            # Set bit in flipped position
+            dst_bit_idx = flipped_y * src_width + x
             dst_byte_idx = dst_bit_idx // 8
             dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
 

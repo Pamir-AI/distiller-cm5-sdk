@@ -9,7 +9,7 @@ from typing import Literal, Optional, Union
 import numpy as np
 from PIL import Image
 
-from .. import Display, DisplayMode, DitheringMethod, ScalingMethod
+from .. import Display, DisplayMode, DitheringMethod, RotationMode, ScalingMethod
 from .layers import ImageLayer, Layer, RectangleLayer, TextLayer
 from .text import measure_text, render_text
 
@@ -258,67 +258,49 @@ class EinkComposer:
                 elif layer.dither_mode == "none":
                     dithering = DitheringMethod.SIMPLE  # SDK doesn't have 'none', use simple
 
-                # Create temp file for processed output
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_out:
-                    tmp_out_path = tmp_out.name
+                # Initialize display if needed
+                if not display._initialized:
+                    display.initialize()
 
-                try:
-                    # Use SDK's display_image_auto for Rust processing
-                    # First, we need to process the image to the target size
-                    # We'll save it temporarily and use SDK's conversion
+                # Use SDK's Rust-based image processing
+                # Convert rotation and flips to SDK format
+                rotation_mode = RotationMode.NONE
+                if layer.rotate == 90:
+                    rotation_mode = RotationMode.ROTATE_90
+                elif layer.rotate == 180:
+                    rotation_mode = RotationMode.ROTATE_180
+                elif layer.rotate == 270:
+                    rotation_mode = RotationMode.ROTATE_270
 
-                    # The SDK's display_png_auto can handle conversion
-                    # We'll use it to process the image with scaling and dithering
-                    if not display._initialized:
-                        display.initialize()
+                # Use the _convert_image_rust method for Rust processing
+                processed_data = display._convert_image_rust(
+                    layer.image_path,
+                    scaling,
+                    dithering,
+                    rotation_mode,
+                    layer.flip_h,
+                    layer.flip_v,
+                    layer.crop_x,
+                    layer.crop_y,
+                )
 
-                    # Use the SDK's image processing by converting through display
-                    # Create a temporary composition at target size
-                    from PIL import Image
+                if processed_data:
+                    # Convert 1-bit packed data to numpy array
+                    # Unpack the bits from the processed data
+                    img_array = []
+                    for byte in processed_data:
+                        for bit_idx in range(8):
+                            bit = (byte >> (7 - bit_idx)) & 1
+                            img_array.append(255 if bit else 0)
 
-                    # Load original image to get dimensions
-                    orig_img = Image.open(layer.image_path)
+                    # Trim to exact size and reshape
+                    img_array = np.array(img_array[: target_width * target_height], dtype=np.uint8)
+                    img_array = img_array.reshape((target_height, target_width))
 
-                    # Apply transformations before SDK processing
-                    if layer.flip_h:
-                        orig_img = orig_img.transpose(Image.FLIP_LEFT_RIGHT)
-                    if layer.flip_v:
-                        orig_img = orig_img.transpose(Image.FLIP_TOP_BOTTOM)
-                    if layer.rotate != 0:
-                        orig_img = orig_img.rotate(-layer.rotate, expand=True)
-
-                    # Save transformed image for SDK processing
-                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_in:
-                        orig_img.save(tmp_in.name)
-                        tmp_in_path = tmp_in.name
-
-                    try:
-                        # Use SDK's convert_and_process_image method if available
-                        # This uses Rust processing internally
-                        processed_data = display.convert_and_process_image(
-                            tmp_in_path,
-                            target_width,
-                            target_height,
-                            scaling,
-                            dithering,
-                            crop_x=layer.crop_x,
-                            crop_y=layer.crop_y,
-                        )
-
-                        if processed_data:
-                            # Convert binary data back to numpy array for compositing
-                            img_array = np.frombuffer(processed_data, dtype=np.uint8)
-                            img_array = img_array.reshape((target_height, target_width))
-
-                            # Composite onto canvas
-                            self._composite_onto_canvas(canvas, img_array, layer.x, layer.y)
-                        else:
-                            print(f"Warning: SDK failed to process image {layer.image_path}")
-                    finally:
-                        Path(tmp_in_path).unlink(missing_ok=True)
-
-                finally:
-                    Path(tmp_out_path).unlink(missing_ok=True)
+                    # Composite onto canvas
+                    self._composite_onto_canvas(canvas, img_array, layer.x, layer.y)
+                else:
+                    print(f"Warning: SDK failed to process image {layer.image_path}")
 
             elif layer.image_data is not None:
                 # Use provided numpy array directly
@@ -405,7 +387,7 @@ class EinkComposer:
     def display(
         self,
         mode: DisplayMode = DisplayMode.FULL,
-        rotate: bool = False,
+        rotation: RotationMode = RotationMode.NONE,
         flip_h: bool = False,
         flip_v: bool = False,
     ) -> bool:
@@ -413,27 +395,24 @@ class EinkComposer:
             # Render composition
             img = self.render()
 
-            # Apply display transformations
-            if rotate:
-                img = np.rot90(img)
-            if flip_h:
-                img = np.fliplr(img)
-            if flip_v:
-                img = np.flipud(img)
+            # Convert numpy array to PIL Image for saving
+            pil_img = Image.fromarray(img, mode="L")
 
             # Save to temporary file for SDK display
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                pil_img = Image.fromarray(img, mode="L")
                 pil_img.save(tmp.name)
                 tmp_path = tmp.name
 
-            # Use SDK's display functionality
+            # Use SDK's display functionality with proper rotation enum
             display = self._get_display()
             if not display._initialized:
                 display.initialize()
 
-            # Display using SDK's optimized path
-            success = display.display_image(tmp_path, mode)
+            # Display using SDK's optimized path with transformations
+            # The SDK's display_image method will handle the transformations
+            success = display.display_image(
+                tmp_path, mode, rotation=rotation, h_flip=flip_h, v_flip=flip_v
+            )
 
             Path(tmp_path).unlink(missing_ok=True)
 

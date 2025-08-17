@@ -308,8 +308,13 @@ async def display_hardware(
     try:
         mode = DisplayMode.PARTIAL if request.partial else DisplayMode.FULL
 
+        # Convert boolean rotate to RotationMode
+        from .. import RotationMode
+
+        rotation = RotationMode.ROTATE_90 if request.rotate else RotationMode.NONE
+
         success = composer.display(
-            mode=mode, rotate=request.rotate, flip_h=request.flip_h, flip_v=request.flip_v
+            mode=mode, rotation=rotation, flip_h=request.flip_h, flip_v=request.flip_v
         )
 
         if not success:

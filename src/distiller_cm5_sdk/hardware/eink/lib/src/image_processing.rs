@@ -24,14 +24,25 @@ pub enum DitheringMethod {
     Simple = 1,         // Fast ordered dithering
 }
 
+/// Rotation modes for image transformation
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RotationMode {
+    None = 0,      // No rotation
+    Rotate90 = 1,  // 90 degrees clockwise
+    Rotate180 = 2, // 180 degrees
+    Rotate270 = 3, // 270 degrees clockwise (90 CCW)
+}
+
 /// Image processing options
 pub struct ProcessingOptions {
     pub scaling: ScalingMethod,
     pub dithering: DitheringMethod,
-    pub rotate: bool,        // Rotate 90 degrees counter-clockwise
-    pub flip: bool,          // Flip horizontally
-    pub crop_x: Option<u32>, // X position for crop (None = center)
-    pub crop_y: Option<u32>, // Y position for crop (None = center)
+    pub rotation: RotationMode, // Rotation mode enum
+    pub h_flip: bool,           // Flip horizontally
+    pub v_flip: bool,           // Flip vertically
+    pub crop_x: Option<u32>,    // X position for crop (None = center)
+    pub crop_y: Option<u32>,    // Y position for crop (None = center)
 }
 
 impl Default for ProcessingOptions {
@@ -39,8 +50,9 @@ impl Default for ProcessingOptions {
         Self {
             scaling: ScalingMethod::Letterbox,
             dithering: DitheringMethod::FloydSteinberg,
-            rotate: false,
-            flip: false,
+            rotation: RotationMode::None,
+            h_flip: false,
+            v_flip: false,
             crop_x: None,
             crop_y: None,
         }
@@ -60,14 +72,22 @@ pub fn process_image_for_display(
 ) -> Result<Vec<u8>, DisplayError> {
     let mut processed = img;
 
-    // Apply transformations
-    if options.flip {
+    // Apply transformations in order: h_flip -> v_flip -> rotation
+    if options.h_flip {
         processed = processed.fliph();
     }
 
-    if options.rotate {
-        processed = processed.rotate90();
+    if options.v_flip {
+        processed = processed.flipv();
     }
+
+    // Apply rotation based on the rotation mode
+    processed = match options.rotation {
+        RotationMode::None => processed,
+        RotationMode::Rotate90 => processed.rotate90(),
+        RotationMode::Rotate180 => processed.rotate180(),
+        RotationMode::Rotate270 => processed.rotate270(),
+    };
 
     // Scale the image
     processed = scale_image(processed, spec.width, spec.height, options)?;

@@ -197,7 +197,7 @@ def main():
     except Exception as e:
         print(f"Error getting display info: {e}")
         print("Attempting to determine dimensions from firmware configuration...")
-        
+
         # Try to get dimensions based on firmware setting
         firmware_env = os.environ.get("DISTILLER_EINK_FIRMWARE", "EPD128x250")
         if firmware_env == "EPD240x416":
@@ -282,7 +282,7 @@ def main():
         checkerboard = create_checkerboard_pattern(width, height, 16)
         checkerboard_data = image_to_raw_data(checkerboard)
         print(f"Checkerboard data size: {len(checkerboard_data)} bytes")
-        print(f"Dithering method: Floyd-Steinberg")
+        print("Dithering method: Floyd-Steinberg")
         hexdump(checkerboard_data, 128)
 
         print("Displaying checkerboard pattern...")
@@ -328,7 +328,7 @@ def main():
         gradient = create_gradient_pattern(width, height)
         temp_path = save_temp_image(gradient, "gradient")
         print(f"Gradient data size: {array_size} bytes")
-        print(f"Dithering method: Floyd-Steinberg")
+        print("Dithering method: Floyd-Steinberg")
 
         print("Displaying gradient with Floyd-Steinberg...")
         try:
@@ -350,7 +350,7 @@ def main():
         print("\n--- Test 7: Gradient with Simple thresholding ---")
         temp_path = save_temp_image(gradient, "gradient_simple")
         print(f"Gradient simple data size: {array_size} bytes")
-        print(f"Dithering method: Simple")
+        print("Dithering method: Simple")
 
         print("Displaying gradient with Simple thresholding...")
         try:

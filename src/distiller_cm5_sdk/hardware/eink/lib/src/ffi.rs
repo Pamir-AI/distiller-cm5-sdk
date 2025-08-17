@@ -6,7 +6,7 @@ use std::ptr;
 
 use crate::config;
 use crate::display;
-use crate::image_processing::{DitheringMethod, ProcessingOptions, ScalingMethod};
+use crate::image_processing::{DitheringMethod, ProcessingOptions, RotationMode, ScalingMethod};
 use crate::protocol::DisplayMode;
 
 // C FFI exports
@@ -229,8 +229,9 @@ pub extern "C" fn process_image_auto(
     output_data: *mut u8,
     scaling: c_int,
     dithering: c_int,
-    rotate: c_int,
-    flip: c_int,
+    rotation: c_int,
+    h_flip: c_int,
+    v_flip: c_int,
     crop_x: c_int,
     crop_y: c_int,
 ) -> c_int {
@@ -267,8 +268,15 @@ pub extern "C" fn process_image_auto(
             1 => DitheringMethod::Simple,
             _ => DitheringMethod::FloydSteinberg,
         },
-        rotate: rotate != 0,
-        flip: flip != 0,
+        rotation: match rotation {
+            0 => RotationMode::None,
+            1 => RotationMode::Rotate90,
+            2 => RotationMode::Rotate180,
+            3 => RotationMode::Rotate270,
+            _ => RotationMode::None,
+        },
+        h_flip: h_flip != 0,
+        v_flip: v_flip != 0,
         crop_x: if crop_x < 0 {
             None
         } else {

@@ -4,7 +4,7 @@ use distiller_display_sdk_shared::{
     DisplayMode, config, create_black_image, create_white_image, display_cleanup, display_clear,
     display_image_raw, display_init, display_sleep, get_dimensions,
     image_processing::{
-        DitheringMethod, ProcessingOptions, ScalingMethod, process_image_file,
+        DitheringMethod, ProcessingOptions, RotationMode, ScalingMethod, process_image_file,
         process_image_for_display,
     },
 };
@@ -280,8 +280,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut file_options = ProcessingOptions::default();
                     file_options.dithering = DitheringMethod::FloydSteinberg;
                     file_options.scaling = ScalingMethod::Letterbox;
-                    file_options.rotate = true; // Rotate 90 degrees counter-clockwise
-                    file_options.flip = true; // Flip horizontally
+                    file_options.rotation = RotationMode::Rotate90; // Rotate 90 degrees clockwise
+                    file_options.h_flip = true; // Flip horizontally
 
                     match process_image_file(image_path, &spec, &file_options) {
                         Ok(image_data) => {
@@ -289,8 +289,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("Processing options:");
                             println!("  Dithering: {:?}", file_options.dithering);
                             println!("  Scaling: {:?}", file_options.scaling);
-                            println!("  Rotate: {}", file_options.rotate);
-                            println!("  Flip: {}", file_options.flip);
+                            println!("  Rotation: {:?}", file_options.rotation);
+                            println!("  H-Flip: {}", file_options.h_flip);
+                            println!("  V-Flip: {}", file_options.v_flip);
                             hexdump(&image_data, 256);
 
                             println!("Displaying image with Floyd-Steinberg...");
