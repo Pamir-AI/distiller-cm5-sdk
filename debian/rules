@@ -47,6 +47,10 @@ override_dh_auto_install:
 	install -d $(CURDIR)/debian/distiller-cm5-sdk/usr/lib
 	ln -sf /opt/distiller-cm5-sdk/lib/libdistiller_display_sdk_shared.so \
 		$(CURDIR)/debian/distiller-cm5-sdk/usr/lib/libdistiller_display_sdk_shared.so
+	
+	# Install systemd service file
+	install -D -m 644 debian/eink-web.service \
+		$(CURDIR)/debian/distiller-cm5-sdk/lib/systemd/system/eink-web.service
 
 override_dh_python3:
 	# Skip dh_python3 - we manage Python environment with uv

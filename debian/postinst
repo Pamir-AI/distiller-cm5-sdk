@@ -59,6 +59,34 @@ echo "Distiller CM5 SDK environment activated"
 EOF
 	chmod +x /opt/distiller-cm5-sdk/activate.sh
 	
+	# Create wrapper scripts for composer
+	echo "Creating composer wrapper scripts..."
+	
+	# eink-compose CLI wrapper
+	cat > /usr/local/bin/eink-compose << 'EOF'
+#!/bin/bash
+source /opt/distiller-cm5-sdk/activate.sh >/dev/null 2>&1
+exec python -m distiller_cm5_sdk.hardware.eink.composer.cli "$@"
+EOF
+	chmod +x /usr/local/bin/eink-compose
+	
+	# eink-web FastAPI wrapper
+	cat > /usr/local/bin/eink-web << 'EOF'
+#!/bin/bash
+source /opt/distiller-cm5-sdk/activate.sh >/dev/null 2>&1
+exec uvicorn distiller_cm5_sdk.hardware.eink.composer.web_app:app \
+    --host 0.0.0.0 --port 5000 "$@"
+EOF
+	chmod +x /usr/local/bin/eink-web
+	
+	# Install systemd service for web UI
+	if [ -f /lib/systemd/system/eink-web.service ]; then
+		systemctl daemon-reload
+		echo "Systemd service 'eink-web' installed"
+		echo "To start: systemctl start eink-web"
+		echo "To enable on boot: systemctl enable eink-web"
+	fi
+	
 	# Set permissions
 	chown -R root:root /opt/distiller-cm5-sdk
 	chmod -R 755 /opt/distiller-cm5-sdk
@@ -68,6 +96,10 @@ EOF
 	
 	echo "Distiller CM5 SDK installed successfully"
 	echo "To activate: source /opt/distiller-cm5-sdk/activate.sh"
+	echo ""
+	echo "Available commands:"
+	echo "  eink-compose - E-ink composition CLI"
+	echo "  eink-web - Start E-ink web UI server"
 	;;
 
 abort-upgrade | abort-remove | abort-deconfigure)

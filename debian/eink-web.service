@@ -1,0 +1,16 @@
+[Unit]
+Description=E-ink Composer Web UI (FastAPI)
+After=network.target
+
+[Service]
+Type=exec
+User=root
+WorkingDirectory=/opt/distiller-cm5-sdk
+Environment="PATH=/opt/distiller-cm5-sdk/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/opt/distiller-cm5-sdk/src"
+ExecStart=/usr/local/bin/eink-web
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -28,7 +28,16 @@ dependencies = [
   "sounddevice>=0.5.2",
   "soundfile>=0.13.1",
   "spidev>=3.7",
+  "fastapi>=0.104.0",
+  "uvicorn[standard]>=0.24.0",
+  "jinja2>=3.1.2",
+  "python-multipart>=0.0.6",
+  "numpy>=1.24.0",
+  "qrcode[pil]>=7.4.2",
 ]
+
+[project.scripts]
+eink-compose = "distiller_cm5_sdk.hardware.eink.composer.cli:main"
 
 [tool.setuptools.packages.find]
 where = [ "src" ]
@@ -41,6 +50,9 @@ where = [ "src" ]
   "piper/models/*",
   "piper/piper/**/*",
   "hardware/audio/test_audio.wav",
+  "hardware/eink/composer/templates/*.html",
+  "hardware/eink/composer/templates/**/*.json",
+  "hardware/eink/composer/static/**/*",
 ]
 
 [tool.ruff]
@@ -60,7 +72,8 @@ lint.ignore = [
     "E501",  # line too long (handled by formatter)
     "E722",  # bare `except`
     "F401",  # imported but unused
-    "B904",  
+    "B904",
+    "B008",  # function call in default argument (FastAPI Depends/File pattern)
 ]
 lint.exclude = [
     ".venv",
