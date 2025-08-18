@@ -46,7 +46,7 @@ composer.add_text_layer(
 composer.add_rectangle_layer(
     layer_id='border',
     x=0, y=0,
-    width=128, height=250,
+    width=122, height=250,
     filled=False,
     color=0
 )
@@ -66,7 +66,7 @@ eink-compose create --size 122x250
 
 # Add layers
 eink-compose add-text hello "HELLO E-INK" --x 20 --y 100
-eink-compose add-rect border --width 128 --height 250 --filled false
+eink-compose add-rect border --width 122 --height 250 --filled false
 
 # List layers
 eink-compose list

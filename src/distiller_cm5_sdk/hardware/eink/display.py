@@ -789,7 +789,7 @@ class Display:
         if rotation != RotationMode.NONE or h_flip or v_flip or invert_colors:
             # For PNG transformations, convert to raw data first
             raw_data = self.convert_png_to_raw(filename)
-            # Assume PNG is 250x128 landscape format when transforming
+            # Assume PNG is 250x122 landscape format when transforming
             src_width, src_height = 250, 122
 
             # Apply transformations in order: h_flip, v_flip, rotate, then invert colors

@@ -16,9 +16,9 @@ include = ["DisplayMode"]
 rename_variants = "ScreamingSnakeCase"
 
 [defines]
-"EPD_WIDTH" = "128"
+"EPD_WIDTH" = "122"
 "EPD_HEIGHT" = "250"
-"EPD_ARRAY" = "((EPD_WIDTH * EPD_HEIGHT) / 8)"
+"EPD_ARRAY" = "(((EPD_WIDTH + 7) / 8) * EPD_HEIGHT)"
 "DC_PIN" = "7"
 "RST_PIN" = "13"
 "BUSY_PIN" = "9"

@@ -371,7 +371,7 @@ import numpy as np
 from distiller_cm5_sdk.hardware.eink import Display
 
 # Create a test pattern
-width, height = 128, 250
+width, height = 122, 250
 image_2d = np.random.randint(0, 2, (height, width), dtype=np.uint8)
 
 # Pack to 1-bit format
