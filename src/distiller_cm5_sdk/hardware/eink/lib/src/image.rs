@@ -2,12 +2,12 @@ use crate::config;
 use crate::error::DisplayError;
 use crate::firmware::DisplaySpec;
 
-pub fn convert_png_to_1bit_with_spec(
+pub fn convert_image_to_1bit_with_spec(
     filename: &str,
     spec: &DisplaySpec,
 ) -> Result<Vec<u8>, DisplayError> {
     let image = lodepng::decode32_file(filename)
-        .map_err(|e| DisplayError::Png(format!("Failed to decode PNG: {}", e)))?;
+        .map_err(|e| DisplayError::Png(format!("Failed to decode image: {}", e)))?;
 
     if image.width != spec.width as usize || image.height != spec.height as usize {
         return Err(DisplayError::Png(format!(
@@ -43,9 +43,9 @@ pub fn convert_png_to_1bit_with_spec(
 }
 
 // Backwards compatibility function using configurable default firmware
-pub fn convert_png_to_1bit(filename: &str) -> Result<Vec<u8>, DisplayError> {
+pub fn convert_image_to_1bit(filename: &str) -> Result<Vec<u8>, DisplayError> {
     let spec = config::get_default_spec()?;
-    convert_png_to_1bit_with_spec(filename, &spec)
+    convert_image_to_1bit_with_spec(filename, &spec)
 }
 
 pub fn get_dimensions_from_spec(spec: &DisplaySpec) -> (u32, u32) {

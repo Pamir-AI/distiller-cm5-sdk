@@ -17,12 +17,12 @@ pub use display::{DefaultDisplay, DisplayDriver, GenericDisplay};
 pub use error::DisplayError;
 pub use firmware::{Command, CommandSequence, DisplayFirmware, DisplaySpec};
 pub use hardware::{DefaultHardwareInterface, GpioController, HardwareInterface, SpiController};
-pub use image::{convert_png_to_1bit, create_black_image, create_white_image, get_dimensions};
+pub use image::{convert_image_to_1bit, create_black_image, create_white_image, get_dimensions};
 pub use protocol::{DisplayMode, EinkProtocol};
 
 // Re-export the main functions for backwards compatibility
 pub use display::{
-    display_cleanup, display_clear, display_get_dimensions, display_image_png, display_image_raw,
+    display_cleanup, display_clear, display_get_dimensions, display_image_file, display_image_raw,
     display_init, display_sleep,
 };
 

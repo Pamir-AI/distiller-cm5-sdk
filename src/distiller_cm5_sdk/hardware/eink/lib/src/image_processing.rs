@@ -298,7 +298,7 @@ fn sierra_dither(mut img: GrayImage) -> GrayImage {
             // Row 1 (next row)
             if y + 1 < height {
                 let row1_idx = (y + 1) * width + x;
-                
+
                 if x >= 2 {
                     let new_val = (data[row1_idx - 2] as i32 + (q_err * 2) >> 5).clamp(0, 255);
                     data[row1_idx - 2] = new_val as u8;
@@ -309,7 +309,7 @@ fn sierra_dither(mut img: GrayImage) -> GrayImage {
                 }
                 let new_val = (data[row1_idx] as i32 + (q_err * 5) >> 5).clamp(0, 255);
                 data[row1_idx] = new_val as u8;
-                
+
                 if x + 1 < width {
                     let new_val = (data[row1_idx + 1] as i32 + (q_err * 4) >> 5).clamp(0, 255);
                     data[row1_idx + 1] = new_val as u8;
@@ -323,14 +323,14 @@ fn sierra_dither(mut img: GrayImage) -> GrayImage {
             // Row 2 (second next row)
             if y + 2 < height {
                 let row2_idx = (y + 2) * width + x;
-                
+
                 if x >= 1 {
                     let new_val = (data[row2_idx - 1] as i32 + (q_err * 2) >> 5).clamp(0, 255);
                     data[row2_idx - 1] = new_val as u8;
                 }
                 let new_val = (data[row2_idx] as i32 + (q_err * 3) >> 5).clamp(0, 255);
                 data[row2_idx] = new_val as u8;
-                
+
                 if x + 1 < width {
                     let new_val = (data[row2_idx + 1] as i32 + (q_err * 2) >> 5).clamp(0, 255);
                     data[row2_idx + 1] = new_val as u8;
@@ -371,7 +371,7 @@ fn sierra_2row_dither(mut img: GrayImage) -> GrayImage {
             // Row 1 (next row)
             if y + 1 < height {
                 let row1_idx = (y + 1) * width + x;
-                
+
                 if x >= 2 {
                     let new_val = (data[row1_idx - 2] as i32 + (q_err * 1) >> 4).clamp(0, 255);
                     data[row1_idx - 2] = new_val as u8;
@@ -382,7 +382,7 @@ fn sierra_2row_dither(mut img: GrayImage) -> GrayImage {
                 }
                 let new_val = (data[row1_idx] as i32 + (q_err * 3) >> 4).clamp(0, 255);
                 data[row1_idx] = new_val as u8;
-                
+
                 if x + 1 < width {
                     let new_val = (data[row1_idx + 1] as i32 + (q_err * 2) >> 4).clamp(0, 255);
                     data[row1_idx + 1] = new_val as u8;
@@ -423,7 +423,7 @@ fn sierra_lite_dither(mut img: GrayImage) -> GrayImage {
             // Next row
             if y + 1 < height {
                 let row1_idx = (y + 1) * width + x;
-                
+
                 if x >= 1 {
                     let new_val = (data[row1_idx - 1] as i32 + (q_err * 1) >> 2).clamp(0, 255);
                     data[row1_idx - 1] = new_val as u8;

@@ -7,7 +7,8 @@ use std::sync::Mutex;
 pub trait DisplayDriver {
     fn init(&mut self) -> Result<(), DisplayError>;
     fn display_image_raw(&mut self, data: &[u8], mode: DisplayMode) -> Result<(), DisplayError>;
-    fn display_image_png(&mut self, filename: &str, mode: DisplayMode) -> Result<(), DisplayError>;
+    fn display_image_file(&mut self, filename: &str, mode: DisplayMode)
+    -> Result<(), DisplayError>;
     fn clear(&mut self) -> Result<(), DisplayError>;
     fn sleep(&mut self) -> Result<(), DisplayError>;
     fn cleanup(&mut self) -> Result<(), DisplayError>;
@@ -68,9 +69,13 @@ impl<P: EinkProtocol> DisplayDriver for GenericDisplay<P> {
         Ok(())
     }
 
-    fn display_image_png(&mut self, filename: &str, mode: DisplayMode) -> Result<(), DisplayError> {
+    fn display_image_file(
+        &mut self,
+        filename: &str,
+        mode: DisplayMode,
+    ) -> Result<(), DisplayError> {
         let spec = self.protocol.get_spec();
-        let raw_data = image::convert_png_to_1bit_with_spec(filename, spec)?;
+        let raw_data = image::convert_image_to_1bit_with_spec(filename, spec)?;
         self.display_image_raw(&raw_data, mode)
     }
 
@@ -201,11 +206,11 @@ pub fn display_image_raw(data: &[u8], mode: DisplayMode) -> Result<(), DisplayEr
     }
 }
 
-pub fn display_image_png(filename: &str, mode: DisplayMode) -> Result<(), DisplayError> {
+pub fn display_image_file(filename: &str, mode: DisplayMode) -> Result<(), DisplayError> {
     let mut state = GLOBAL_STATE.lock().unwrap();
 
     if let Some(display) = &mut state.display {
-        display.display_image_png(filename, mode)
+        display.display_image_file(filename, mode)
     } else {
         Err(DisplayError::NotInitialized)
     }
@@ -252,9 +257,9 @@ pub fn display_get_dimensions() -> (u32, u32) {
     })
 }
 
-pub fn convert_png_to_1bit(filename: &str) -> Result<Vec<u8>, DisplayError> {
+pub fn convert_image_to_1bit(filename: &str) -> Result<Vec<u8>, DisplayError> {
     // For backwards compatibility, use default firmware
-    image::convert_png_to_1bit(filename)
+    image::convert_image_to_1bit(filename)
 }
 
 // Advanced API functions for custom firmware

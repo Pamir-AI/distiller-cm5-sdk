@@ -55,7 +55,7 @@ pub extern "C" fn display_image_raw(data: *const u8, mode: c_int) -> c_int {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn display_image_png(filename: *const c_char, mode: c_int) -> c_int {
+pub extern "C" fn display_image_file(filename: *const c_char, mode: c_int) -> c_int {
     if filename.is_null() {
         return 0;
     }
@@ -73,10 +73,10 @@ pub extern "C" fn display_image_png(filename: *const c_char, mode: c_int) -> c_i
         _ => return 0,
     };
 
-    match display::display_image_png(filename_str, display_mode) {
+    match display::display_image_file(filename_str, display_mode) {
         Ok(()) => 1,
         Err(e) => {
-            log::error!("Display image PNG failed: {}", e);
+            log::error!("Display image file failed: {}", e);
             0
         }
     }
@@ -119,7 +119,7 @@ pub extern "C" fn display_get_dimensions(width: *mut c_uint, height: *mut c_uint
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn convert_png_to_1bit(filename: *const c_char, output_data: *mut u8) -> c_int {
+pub extern "C" fn convert_image_to_1bit(filename: *const c_char, output_data: *mut u8) -> c_int {
     if filename.is_null() || output_data.is_null() {
         return 0;
     }
@@ -131,7 +131,7 @@ pub extern "C" fn convert_png_to_1bit(filename: *const c_char, output_data: *mut
         }
     };
 
-    match display::convert_png_to_1bit(filename_str) {
+    match display::convert_image_to_1bit(filename_str) {
         Ok(data) => {
             unsafe {
                 // Get configured firmware array size - fail if not configured
@@ -150,7 +150,7 @@ pub extern "C" fn convert_png_to_1bit(filename: *const c_char, output_data: *mut
             1
         }
         Err(e) => {
-            log::error!("Convert PNG to 1bit failed: {}", e);
+            log::error!("Convert image to 1bit failed: {}", e);
             0
         }
     }
