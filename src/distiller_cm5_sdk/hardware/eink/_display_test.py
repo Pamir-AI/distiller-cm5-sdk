@@ -260,7 +260,7 @@ def main():
         print("Expected: All bytes should be 0xFF")
         hexdump(white_image, 64)
         try:
-            display.display_image(white_image, DisplayMode.FULL)
+            display.display_image(white_image, mode=DisplayMode.FULL)
             print("✓ White image displayed")
         except Exception as e:
             print(f"Error displaying white image: {e}")
@@ -272,7 +272,7 @@ def main():
         print("Expected: All bytes should be 0x00")
         hexdump(black_image, 64)
         try:
-            display.display_image(black_image, DisplayMode.FULL)
+            display.display_image(black_image, mode=DisplayMode.FULL)
             print("✓ Black image displayed")
         except Exception as e:
             print(f"Error displaying black image: {e}")
@@ -288,7 +288,7 @@ def main():
 
         print("Displaying checkerboard pattern...")
         try:
-            display.display_image(checkerboard_data, DisplayMode.FULL)
+            display.display_image(checkerboard_data, mode=DisplayMode.FULL)
             print("✓ Checkerboard displayed")
         except Exception as e:
             print(f"Error displaying checkerboard: {e}")
@@ -303,7 +303,7 @@ def main():
 
         print("Displaying vertical stripes...")
         try:
-            display.display_image(vertical_data, DisplayMode.FULL)
+            display.display_image(vertical_data, mode=DisplayMode.FULL)
             print("✓ Vertical stripes displayed")
         except Exception as e:
             print(f"Error displaying vertical stripes: {e}")
@@ -318,7 +318,7 @@ def main():
 
         print("Displaying horizontal stripes...")
         try:
-            display.display_image(horizontal_data, DisplayMode.FULL)
+            display.display_image(horizontal_data, mode=DisplayMode.FULL)
             print("✓ Horizontal stripes displayed")
         except Exception as e:
             print(f"Error displaying horizontal stripes: {e}")
@@ -333,7 +333,7 @@ def main():
 
         print("Displaying gradient with Floyd-Steinberg...")
         try:
-            display.display_image_auto(
+            display.display_image(
                 temp_path,
                 mode=DisplayMode.FULL,
                 scaling=ScalingMethod.STRETCH,
@@ -355,7 +355,7 @@ def main():
 
         print("Displaying gradient with Simple thresholding...")
         try:
-            display.display_image_auto(
+            display.display_image(
                 temp_path,
                 mode=DisplayMode.FULL,
                 scaling=ScalingMethod.STRETCH,
@@ -390,7 +390,7 @@ def main():
 
             try:
                 start_time = time.time()
-                display.display_image_auto(
+                display.display_image(
                     temp_path,
                     mode=DisplayMode.FULL,
                     scaling=ScalingMethod.STRETCH,
@@ -399,11 +399,15 @@ def main():
                 end_time = time.time()
 
                 process_time = end_time - start_time
-                print(f"  ✓ {method_name} displayed successfully (processed in {process_time:.3f}s)")
+                print(
+                    f"  ✓ {method_name} displayed successfully (processed in {process_time:.3f}s)"
+                )
 
                 # Capture the result for comparison if capture is available
                 try:
-                    capture_path = display.capture_display(f"/tmp/dithering_comparison_{method_name.lower()}.png")
+                    capture_path = display.capture_display(
+                        f"/tmp/dithering_comparison_{method_name.lower()}.png"
+                    )
                     print(f"  ✓ Result captured to: {capture_path}")
                 except Exception:
                     pass  # Capture may not be available, continue with test
@@ -435,7 +439,7 @@ def main():
 
                 try:
                     print("Displaying image with Floyd-Steinberg...")
-                    display.display_image_auto(
+                    display.display_image(
                         image_path,
                         mode=DisplayMode.FULL,
                         scaling=ScalingMethod.LETTERBOX,
@@ -451,7 +455,7 @@ def main():
                     print("Processing with Simple dithering...")
                     print("  Dithering: Simple")
 
-                    display.display_image_auto(
+                    display.display_image(
                         image_path,
                         mode=DisplayMode.FULL,
                         scaling=ScalingMethod.LETTERBOX,
