@@ -11,7 +11,7 @@ E-ink display control module for the Distiller CM5 SDK. Provides high-level Pyth
 
 ## Features
 
-- **Multi-Display Support**: Supports EPD128x250 and EPD240x416 displays with automatic detection
+- **Multi-Display Support**: Supports EPD122x250 and EPD240x416 displays with automatic detection
 - **Universal Image Support**: Display images in 10+ formats (PNG, JPEG, GIF, BMP, TIFF, WebP, ICO, PNM, TGA, DDS)
 - **Intelligent Auto-Conversion**: Display any image regardless of size, format, or color depth
 - **Image Caching**: LRU cache with persistent storage for instant repeated displays
@@ -132,7 +132,7 @@ try:
     display.display_image("image.png", DisplayMode.FULL)
     
     # Display raw 1-bit data with partial refresh
-    raw_data = bytes([0xFF] * 4000)  # 4000 bytes for 128x250 pixels
+    raw_data = bytes([0xFF] * 3813)  # 3813 bytes for 122x250 pixels (122/8 = 15.25 -> 16 bytes per row)
     display.display_image(raw_data, DisplayMode.PARTIAL)
     
     # Get display info
@@ -153,7 +153,7 @@ finally:
 
 The intelligent auto-conversion system allows you to display **any PNG image** regardless of size, format, or color depth. The system automatically:
 
-- **Detects your display type** (EPD128x250 or EPD240x416)
+- **Detects your display type** (EPD122x250 or EPD240x416)
 - **Scales images intelligently** using multiple algorithms
 - **Converts color formats** (RGB, RGBA, grayscale, palette → 1-bit)
 - **Applies optimal dithering** for best visual quality
@@ -200,7 +200,7 @@ display_png_auto("portrait.png",
 ## Display Specifications
 
 ### Supported Display Types
-- **EPD128x250**: 128 × 250 pixels (16:25 aspect ratio)
+- **EPD122x250**: 122 × 250 pixels (61:125 aspect ratio)
 - **EPD240x416**: 240 × 416 pixels (15:26 aspect ratio)
 - **Auto-Detection**: Firmware automatically detected at runtime
 
@@ -217,7 +217,7 @@ display_png_auto("portrait.png",
 - **Automatic processing**: No manual resizing or conversion needed
 
 #### Manual/Legacy Mode
-- **Exact Size**: Must match display dimensions (128×250 or 240×416)
+- **Exact Size**: Must match display dimensions (122×250 or 240×416)
 - **Color**: Grayscale or RGB (converted to 1-bit)
 - **Threshold**: Pixels > 128 brightness = white, ≤ 128 = black
 
@@ -305,7 +305,7 @@ DisplayMode.PARTIAL   # Partial refresh - fast updates
 Quick PNG display with automatic resource management.
 - `filename`: Path to PNG file
 - `mode`: Display refresh mode
-- `rotate`: If True, rotate landscape PNG (250x128) to portrait (128x250)
+- `rotate`: If True, rotate landscape PNG (250x122) to portrait (122x250)
 - `auto_convert`: If True, automatically convert any PNG to display format
 - `scaling`: How to scale the image (only used with auto_convert)
 - `dithering`: Dithering method (only used with auto_convert)
@@ -362,7 +362,7 @@ display_png("any_image.png", auto_convert=True)
 from distiller_cm5_sdk.hardware.eink import display_png
 
 # Display image with exact display dimensions
-display_png("logo_128x250.png")
+display_png("logo_122x250.png")
 ```
 
 ### Raw Data Generation

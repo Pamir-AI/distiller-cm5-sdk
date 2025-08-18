@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn test_config_system() {
         // Test firmware type parsing
-        assert!(config::FirmwareType::from_str("EPD128x250").is_ok());
+        assert!(config::FirmwareType::from_str("EPD122x250").is_ok());
         assert!(config::FirmwareType::from_str("EPD240x416").is_ok());
         assert!(config::FirmwareType::from_str("invalid").is_err());
     }
@@ -415,7 +415,7 @@ mod tests {
         assert!(dims.1 > 0);
 
         // Should be one of the supported resolutions
-        let supported = [(128, 250), (240, 416)];
+        let supported = [(122, 250), (240, 416)];
         assert!(supported.contains(&dims));
     }
 }

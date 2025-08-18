@@ -17,7 +17,7 @@ pub fn convert_png_to_1bit_with_spec(
     }
 
     let mut output = vec![0u8; spec.array_size()];
-    
+
     // Calculate bytes per row for proper byte alignment
     let bytes_per_row = ((spec.width + 7) / 8) as usize;
 

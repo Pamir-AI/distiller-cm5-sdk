@@ -106,7 +106,7 @@ impl DisplayFirmware for EPD122x250Firmware {
     }
 }
 
-impl Default for EPD128x250Firmware {
+impl Default for EPD122x250Firmware {
     fn default() -> Self {
         Self::new()
     }

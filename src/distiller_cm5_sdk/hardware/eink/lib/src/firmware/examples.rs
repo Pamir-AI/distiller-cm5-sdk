@@ -3,7 +3,7 @@
 /// This file demonstrates how to use the various firmware configurations
 /// for different display modes and variants.
 
-use crate::firmware::{EPD240x416Firmware, EPD128x250Firmware};
+use crate::firmware::{EPD240x416Firmware, EPD122x250Firmware};
 use crate::protocol::{create_protocol_with_firmware, DisplayMode};
 use crate::display::{GenericDisplay, DisplayDriver};
 use crate::error::DisplayError;
@@ -57,7 +57,7 @@ pub fn example_compile_time_switch() -> Result<(), DisplayError> {
     type CurrentFirmware = EPD240x416Firmware;
     
     #[cfg(not(feature = "epd240x416"))]
-    type CurrentFirmware = EPD128x250Firmware;
+    type CurrentFirmware = EPD122x250Firmware;
     
     let firmware = CurrentFirmware::new();
     let protocol = create_protocol_with_firmware(firmware)?;
@@ -81,8 +81,8 @@ pub fn example_runtime_switch(display_type: &str) -> Result<(), DisplayError> {
             display.init()?;
             display.cleanup()?;
         }
-        "128x250" => {
-            let firmware = EPD128x250Firmware::new();
+        "122x250" => {
+            let firmware = EPD122x250Firmware::new();
             let protocol = create_protocol_with_firmware(firmware)?;
             let mut display = GenericDisplay::new(protocol);
             display.init()?;

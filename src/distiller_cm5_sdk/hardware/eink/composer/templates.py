@@ -81,7 +81,7 @@ class TemplateRenderer:
         self, ip_address: str | None = None, tunnel_url: str | None = None, **kwargs
     ) -> EinkComposer:
         # Get template dimensions
-        width = self.template.get("width", 128)
+        width = self.template.get("width", 122)
         height = self.template.get("height", 250)
 
         # Create composer
@@ -267,7 +267,7 @@ def create_template_from_dict(template_dict: dict, save_path: str | None = None)
 
     # Set defaults
     template_dict.setdefault("template_version", "1.0")
-    template_dict.setdefault("width", 128)
+    template_dict.setdefault("width", 122)
     template_dict.setdefault("height", 250)
 
     # Save if path provided

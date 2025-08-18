@@ -552,7 +552,7 @@ fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8
             let row_start = y * width;
             let row_byte_start = y * bytes_per_row;
             let mut x = 0;
-            
+
             // Process 8 pixels at a time within the row
             while x + 8 <= width {
                 let pixels = vld1_u8(data.as_ptr().add(row_start + x));
@@ -572,7 +572,7 @@ fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8
                 output[row_byte_start + x / 8] = byte_val;
                 x += 8;
             }
-            
+
             // Handle remaining pixels in the row
             while x < width {
                 let pixel = data[row_start + x];

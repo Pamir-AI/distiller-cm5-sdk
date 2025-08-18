@@ -126,11 +126,11 @@ impl DisplayFirmware for EPD240x320Firmware {
 
 ```rust
 // src/firmware/mod.rs
-pub mod epd128x250;
+pub mod epd122x250;
 pub mod epd200x200;
 pub mod epd240x320; // Add your new module
 
-pub use epd128x250::EPD128x250Firmware;
+pub use epd122x250::EPD122x250Firmware;
 pub use epd200x200::EPD200x200Firmware;
 pub use epd240x320::EPD240x320Firmware; // Export your new firmware
 ```
@@ -208,7 +208,7 @@ let display = GenericDisplay::new(protocol);
 ```
 src/firmware/
 ├── mod.rs              # Main firmware module with trait definition
-├── epd128x250.rs       # Current 128x250 display firmware
+├── epd122x250.rs       # Current 122x250 display firmware
 ├── epd200x200.rs       # Example 200x200 display firmware
 ├── epd240x320.rs       # Your new display firmware
 └── README.md           # This documentation

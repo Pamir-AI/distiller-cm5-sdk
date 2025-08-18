@@ -391,7 +391,7 @@
         <div class="sidebar">
             <div class="section">
                 <h3>Canvas</h3>
-                <div class="canvas-info" id="canvasInfo">250 × 128 (2x preview)</div>
+                <div class="canvas-info" id="canvasInfo">250 × 122 (2x preview)</div>
             </div>
 
             <div class="section">
@@ -512,7 +512,7 @@
             canvas.addEventListener('mousedown', async function(e) {
                 const rect = this.getBoundingClientRect();
                 const x = Math.round((e.clientX - rect.left) * (250 / rect.width));
-                const y = Math.round((e.clientY - rect.top) * (128 / rect.height));
+                const y = Math.round((e.clientY - rect.top) * (122 / rect.height));
                 
                 // Check if clicking on an existing layer
                 if (hoveredLayerIndex !== null) {
@@ -534,7 +534,7 @@
             canvas.addEventListener('mousemove', async function(e) {
                 const rect = this.getBoundingClientRect();
                 const x = Math.round((e.clientX - rect.left) * (250 / rect.width));
-                const y = Math.round((e.clientY - rect.top) * (128 / rect.height));
+                const y = Math.round((e.clientY - rect.top) * (122 / rect.height));
                 
                 lastMousePos = { x, y };
                 
@@ -751,7 +751,7 @@
                     </div>
                     <div class="form-group">
                         <label>Custom Height:</label>
-                        <input type="number" id="imageHeight" min="1" max="128" placeholder="Auto">
+                        <input type="number" id="imageHeight" min="1" max="122" placeholder="Auto">
                     </div>
                     <button class="btn primary" onclick="addBackgroundImage()" disabled id="addImageBtn">Add Background Image</button>
                 `;
@@ -1097,7 +1097,7 @@
                     </div>
                     <div class="form-group">
                         <label>Height:</label>
-                        <input type="number" id="editHeight" value="${layer.height}" min="1" max="128" onchange="updateLayerProperty('height', parseInt(this.value))">
+                        <input type="number" id="editHeight" value="${layer.height}" min="1" max="122" onchange="updateLayerProperty('height', parseInt(this.value))">
                     </div>
                     <div class="form-group">
                         <label><input type="checkbox" id="editFilled" ${layer.filled ? 'checked' : ''} onchange="updateLayerProperty('filled', this.checked)"> Filled</label>
@@ -1258,7 +1258,7 @@
                         } else {
                             // Use remaining canvas space (matches composer logic)
                             layerWidth = 250 - layer.x;
-                            layerHeight = 128 - layer.y;
+                            layerHeight = 122 - layer.y;
                         }
                     } else {
                         layerWidth = layer.width || 50;
@@ -1335,7 +1335,7 @@
                 
                 // Convert layer coordinates to canvas pixel coordinates
                 const scaleX = canvasRect.width / 250;
-                const scaleY = canvasRect.height / 128;
+                const scaleY = canvasRect.height / 122;
                 
                 const highlightX = layer.x * scaleX;
                 const highlightY = layer.y * scaleY;
@@ -1464,7 +1464,7 @@
                 
                 // Convert to canvas coordinates
                 const scaleX = rect.width / 250;
-                const scaleY = rect.height / 128;
+                const scaleY = rect.height / 122;
                 
                 highlight.style.left = (layer.x * scaleX) + 'px';
                 highlight.style.top = (layer.y * scaleY) + 'px';

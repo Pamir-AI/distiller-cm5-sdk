@@ -95,7 +95,7 @@ def get_session_id(request: Request, response: Response) -> str:
 
 def get_composition(session_id: str = Depends(get_session_id)) -> EinkComposer:
     if session_id not in compositions:
-        compositions[session_id] = EinkComposer(250, 128)
+        compositions[session_id] = EinkComposer(250, 122)
     return compositions[session_id]
 
 
@@ -204,7 +204,7 @@ async def add_image(
             "resize_mode": resize_mode,
             "dither_mode": dither_mode,
         }
-        
+
         # Only add width/height if they were provided
         if width is not None:
             kwargs["width"] = width
@@ -227,10 +227,7 @@ async def remove_layer(layer_id: str, composer: EinkComposer = Depends(get_compo
 
 
 @app.post("/api/remove-layer", response_model=OperationResponse)
-async def remove_layer_post(
-    layer_id: str,
-    composer: EinkComposer = Depends(get_composition)
-):
+async def remove_layer_post(layer_id: str, composer: EinkComposer = Depends(get_composition)):
     """Remove layer - compatibility endpoint for frontend using POST."""
     success = composer.remove_layer(layer_id)
     if not success:
@@ -247,10 +244,7 @@ async def toggle_layer(layer_id: str, composer: EinkComposer = Depends(get_compo
 
 
 @app.post("/api/toggle-layer", response_model=OperationResponse)
-async def toggle_layer_post(
-    layer_id: str,
-    composer: EinkComposer = Depends(get_composition)
-):
+async def toggle_layer_post(layer_id: str, composer: EinkComposer = Depends(get_composition)):
     """Toggle layer visibility - compatibility endpoint for frontend."""
     success = composer.toggle_layer(layer_id)
     if not success:
@@ -271,10 +265,7 @@ async def update_layer(
 
 @app.post("/api/update-layer-position", response_model=OperationResponse)
 async def update_layer_position(
-    layer_id: str,
-    x: int,
-    y: int,
-    composer: EinkComposer = Depends(get_composition)
+    layer_id: str, x: int, y: int, composer: EinkComposer = Depends(get_composition)
 ):
     """Update layer position - compatibility endpoint for frontend."""
     success = composer.update_layer(layer_id, x=x, y=y)
@@ -352,16 +343,11 @@ async def add_ip_placeholder(
     background: bool = True,
     rotation: int = 0,
     flip_h: bool = False,
-    composer: EinkComposer = Depends(get_composition)
+    composer: EinkComposer = Depends(get_composition),
 ):
     """Add IP address placeholder - compatibility endpoint for frontend."""
     request = PlaceholderRequest(
-        placeholder_type="ip",
-        x=x,
-        y=y,
-        font_size=font_size,
-        color=color,
-        background=background
+        placeholder_type="ip", x=x, y=y, font_size=font_size, color=color, background=background
     )
     return await add_placeholder(request, composer)
 
@@ -372,16 +358,10 @@ async def add_qr_placeholder(
     y: int = 64,
     width: int = 70,
     height: int = 70,
-    composer: EinkComposer = Depends(get_composition)
+    composer: EinkComposer = Depends(get_composition),
 ):
     """Add QR code placeholder - compatibility endpoint for frontend."""
-    request = PlaceholderRequest(
-        placeholder_type="qr",
-        x=x,
-        y=y,
-        width=width,
-        height=height
-    )
+    request = PlaceholderRequest(placeholder_type="qr", x=x, y=y, width=width, height=height)
     return await add_placeholder(request, composer)
 
 
@@ -452,7 +432,7 @@ async def hardware_info():
                 info.hardware_init = True
                 info.hardware_status = "Available and working"
         except Exception as e:
-            info.display_size = "128x250 (default)"
+            info.display_size = "122x250 (default)"
             info.hardware_init = False
             info.hardware_status = f"SDK available but hardware init failed: {e}"
 
@@ -533,7 +513,7 @@ async def export_template(
 @app.post("/api/import-template", response_model=OperationResponse)
 async def import_template(template_data: dict[str, Any], session_id: str = Depends(get_session_id)):
     try:
-        composer = EinkComposer(template_data.get("width", 250), template_data.get("height", 128))
+        composer = EinkComposer(template_data.get("width", 250), template_data.get("height", 122))
         composer.from_dict(template_data)
 
         try:

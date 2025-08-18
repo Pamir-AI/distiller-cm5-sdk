@@ -1,11 +1,9 @@
 use crate::error::DisplayError;
 
 pub mod epd122x250;
-pub mod epd128x250;
 pub mod epd240x416;
 
 pub use epd122x250::EPD122x250Firmware;
-pub use epd128x250::EPD128x250Firmware;
 pub use epd240x416::EPD240x416Firmware;
 
 // Display specifications

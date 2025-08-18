@@ -91,7 +91,7 @@ distiller-cm5-sdk/
 2. **Hardware Abstraction**: Each hardware component has its own module with error handling and resource cleanup:
    - Audio: ALSA-based with configurable gain/volume
    - Camera: V4L2 support with OpenCV integration
-   - E-ink: Rust-based SPI driver with multiple firmware support (EPD128x250, EPD240x416)
+   - E-ink: Rust-based SPI driver with multiple firmware support (EPD122x250, EPD240x416)
    - LED: I2C/SPI controllers via SAM module
 
 3. **Configuration Priority**: Environment variables → Config files → Defaults
@@ -124,7 +124,7 @@ distiller-cm5-sdk/
 ### E-ink Display Configuration
 
 The e-ink module supports multiple display types with automatic firmware detection:
-- **EPD128x250**: 128×250 pixels (default for backward compatibility)
+- **EPD122x250**: 122×250 pixels (default)
 - **EPD240x416**: 240×416 pixels
 
 Configuration methods (in priority order):

@@ -15,7 +15,7 @@ from .text import measure_text, render_text
 
 
 class EinkComposer:
-    def __init__(self, width: int = 128, height: int = 250):
+    def __init__(self, width: int = 122, height: int = 250):
         self.width = width
         self.height = height
         self.layers: list[Layer] = []
@@ -462,7 +462,7 @@ class EinkComposer:
         }
 
     def from_dict(self, data: dict) -> None:
-        self.width = data.get("width", 128)
+        self.width = data.get("width", 122)
         self.height = data.get("height", 250)
         self.layers = []
 

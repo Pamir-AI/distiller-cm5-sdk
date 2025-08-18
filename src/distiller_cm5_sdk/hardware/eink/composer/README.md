@@ -31,8 +31,8 @@ pip install -e /path/to/distiller-cm5-sdk
 ```python
 from distiller_cm5_sdk.hardware.eink.composer import EinkComposer
 
-# Create composer for standard e-ink (128x250)
-composer = EinkComposer(128, 250)
+# Create composer for standard e-ink (122x250)
+composer = EinkComposer(122, 250)
 
 # Add text layer
 composer.add_text_layer(
@@ -62,7 +62,7 @@ composer.display()
 
 ```bash
 # Create composition
-eink-compose create --size 128x250
+eink-compose create --size 122x250
 
 # Add layers
 eink-compose add-text hello "HELLO E-INK" --x 20 --y 100
@@ -168,7 +168,7 @@ If migrating from the standalone `distiller-eink-cli` project:
 ## Hardware Requirements
 
 - Raspberry Pi or compatible board
-- E-ink display (128x250 or 240x416)
+- E-ink display (122x250 or 240x416)
 - SPI connection to display
 - Distiller CM5 SDK drivers installed
 

@@ -35,7 +35,6 @@ class FirmwareType(Enum):
     """Supported e-ink display firmware types."""
 
     EPD122x250 = "EPD122x250"
-    EPD128x250 = "EPD128x250"
     EPD240x416 = "EPD240x416"
 
 
@@ -611,7 +610,7 @@ class Display:
                 raise DisplayError(
                     "Failed to initialize display configuration. "
                     "Set DISTILLER_EINK_FIRMWARE environment variable to "
-                    "'EPD122x250', 'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+                    "'EPD122x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
                 )
 
         success = self._lib.display_init()
@@ -646,7 +645,7 @@ class Display:
             raise DisplayError(
                 f"Failed to get display dimensions from library: {e}. "
                 "Ensure DISTILLER_EINK_FIRMWARE environment variable is set to "
-                "'EPD122x250', 'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+                "'EPD122x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
             )
 
     def get_dimensions(self) -> tuple[int, int]:
@@ -671,7 +670,7 @@ class Display:
                     raise DisplayError(
                         "Display dimensions not configured. "
                         "Set DISTILLER_EINK_FIRMWARE environment variable to "
-                        "'EPD122x250', 'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+                        "'EPD122x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
                     )
                 return (self.WIDTH, self.HEIGHT)
         return (self.WIDTH, self.HEIGHT)
@@ -791,7 +790,7 @@ class Display:
             # For PNG transformations, convert to raw data first
             raw_data = self.convert_png_to_raw(filename)
             # Assume PNG is 250x128 landscape format when transforming
-            src_width, src_height = 250, 128
+            src_width, src_height = 250, 122
 
             # Apply transformations in order: h_flip, v_flip, rotate, then invert colors
             if h_flip:
@@ -812,7 +811,7 @@ class Display:
 
             self._display_raw(raw_data, mode)
         else:
-            # Direct PNG display (must be 128x250)
+            # Direct PNG display (must be 122x250)
             filename_bytes = filename.encode("utf-8")
             success = self._lib.display_image_png(filename_bytes, int(mode))
             if not success:
@@ -854,7 +853,7 @@ class Display:
         Convert PNG file to raw 1-bit data.
 
         Args:
-            filename: Path to PNG file (must be exactly 128x250 pixels)
+            filename: Path to PNG file (must be exactly 122x250 pixels)
 
         Returns:
             Raw 1-bit packed image data (4000 bytes)
@@ -943,7 +942,7 @@ class Display:
         Set the default firmware type for the display.
 
         Args:
-            firmware_type: Firmware type string (e.g., "EPD128x250", "EPD240x416")
+            firmware_type: Firmware type string (e.g., "EPD122x250", "EPD240x416")
 
         Raises:
             DisplayError: If firmware type is invalid or setting fails
@@ -1519,7 +1518,7 @@ def rotate_bitpacked_ccw_90(src_data: bytes, src_width: int, src_height: int) ->
     """
     Rotate 1-bit packed bitmap data 90 degrees counter-clockwise.
 
-    This function converts landscape data (e.g., 250x128) to portrait data (e.g., 128x250)
+    This function converts landscape data (e.g., 250x122) to portrait data (e.g., 122x250)
     for display on portrait-oriented e-ink screens.
 
     Args:
@@ -1800,7 +1799,7 @@ def set_default_firmware(firmware_type: str | FirmwareType) -> None:
     Set the default firmware type globally.
 
     Args:
-        firmware_type: Firmware type (e.g., FirmwareType.EPD128x250, FirmwareType.EPD240x416 or string)
+        firmware_type: Firmware type (e.g., FirmwareType.EPD122x250, FirmwareType.EPD240x416 or string)
 
     Raises:
         DisplayError: If firmware type is invalid or setting fails
@@ -1837,7 +1836,7 @@ def initialize_display_config() -> None:
     This loads configuration from:
     - Environment variable: DISTILLER_EINK_FIRMWARE
     - Config files: /opt/distiller-cm5-sdk/eink.conf, ./eink.conf, ~/.distiller/eink.conf
-    - Falls back to EPD128x250 default
+    - Falls back to EPD122x250 default
 
     Raises:
         DisplayError: If configuration initialization fails

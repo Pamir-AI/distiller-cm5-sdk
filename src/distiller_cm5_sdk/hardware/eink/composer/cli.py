@@ -49,8 +49,8 @@ class ComposerSession:
 
     def ensure_composer(self):
         if not self.composer:
-            print("No composition found. Creating default 128x250...", file=sys.stderr)
-            self.composer = EinkComposer(128, 250)
+            print("No composition found. Creating default 122x250...", file=sys.stderr)
+            self.composer = EinkComposer(122, 250)
             self.save_session()
 
     def _restore_layer(self, layer_data):
@@ -100,15 +100,15 @@ def create_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    eink-compose create --size 128x250
+    eink-compose create --size 122x250
   eink-compose add-text hello "HELLO E-INK" --x 20 --y 120
-  eink-compose add-rect border --width 128 --height 250 --filled false
+  eink-compose add-rect border --width 122 --height 250 --filled false
   eink-compose display
 
-    eink-compose create --size 128x250
-  eink-compose add-rect bg --width 128 --height 250 --filled true --color 255
+    eink-compose create --size 122x250
+  eink-compose add-rect bg --width 122 --height 250 --filled true --color 255
   eink-compose add-text title "E-INK DISPLAY" --x 15 --y 50
-  eink-compose add-text info "128 x 250 px" --x 25 --y 70
+  eink-compose add-text info "122 x 250 px" --x 25 --y 70
   eink-compose display --save-preview preview.png
 
     eink-compose render --output display.png --format png
@@ -122,7 +122,7 @@ Examples:
 
     # Create command
     create_parser = subparsers.add_parser("create", help="Create a new composition")
-    create_parser.add_argument("--size", default="128x250", help="Canvas size WIDTHxHEIGHT")
+    create_parser.add_argument("--size", default="122x250", help="Canvas size WIDTHxHEIGHT")
     create_parser.add_argument("--output", help="Save immediately to file")
 
     # Add image command
@@ -188,7 +188,7 @@ Examples:
 
     # Reset command
     reset_parser = subparsers.add_parser("reset", help="Reset composition")
-    reset_parser.add_argument("--size", default="128x250", help="Canvas size WIDTHxHEIGHT")
+    reset_parser.add_argument("--size", default="122x250", help="Canvas size WIDTHxHEIGHT")
 
     # List command
     subparsers.add_parser("list", help="List all layers")
@@ -389,7 +389,7 @@ def main():
 
     elif args.command == "load":
         try:
-            session.composer = EinkComposer(128, 250)
+            session.composer = EinkComposer(122, 250)
             session.composer.load_json(args.filename)
             session.save_session()
             print(f"Loaded composition from {args.filename}")

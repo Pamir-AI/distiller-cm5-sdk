@@ -181,13 +181,13 @@ High-performance e-ink display control with multi-format support, intelligent ca
 - **Universal Format Support**: JPEG, PNG, BMP, TIFF, WebP, GIF, ICO, PNM, TGA, DDS
 - **Intelligent Caching**: LRU cache with persistence reduces repeated conversions by 90%+
 - **Rust Processing**: Native performance - 2-3x faster than PIL-based processing
-- **Multiple Display Types**: EPD128x250 (128×250px), EPD240x416 (240×416px)
+- **Multiple Display Types**: EPD122x250 (122×250px), EPD240x416 (240×416px)
 - **Smart Scaling**: Letterbox, crop, stretch with aspect ratio preservation
 
 **Configuration Priority:**
 1. Environment variable: `DISTILLER_EINK_FIRMWARE`
 2. Config files: `/opt/distiller-cm5-sdk/eink.conf`
-3. Default: `EPD128x250`
+3. Default: `EPD122x250`
 
 **Basic Usage:**
 ```python

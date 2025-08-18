@@ -173,8 +173,8 @@ def main():
     if firmware_env:
         print(f"Setting firmware from environment: {firmware_env}")
         try:
-            if firmware_env == "EPD128x250":
-                set_default_firmware(FirmwareType.EPD128x250)
+            if firmware_env == "EPD122x250":
+                set_default_firmware(FirmwareType.EPD122x250)
             elif firmware_env == "EPD240x416":
                 set_default_firmware(FirmwareType.EPD240x416)
             else:
@@ -199,11 +199,11 @@ def main():
         print("Attempting to determine dimensions from firmware configuration...")
 
         # Try to get dimensions based on firmware setting
-        firmware_env = os.environ.get("DISTILLER_EINK_FIRMWARE", "EPD128x250")
+        firmware_env = os.environ.get("DISTILLER_EINK_FIRMWARE", "EPD122x250")
         if firmware_env == "EPD240x416":
             width, height = 240, 416
         else:
-            width, height = 128, 250
+            width, height = 122, 250
         array_size = (width * height) // 8
         print(f"Using {firmware_env} dimensions: {width}x{height} pixels")
         print(f"Required data size: {array_size} bytes")
