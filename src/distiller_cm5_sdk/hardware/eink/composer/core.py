@@ -259,8 +259,8 @@ class EinkComposer:
                     dithering = DitheringMethod.SIMPLE  # SDK doesn't have 'none', use simple
 
                 # Initialize display if needed
-                if not display._initialized:
-                    display.initialize()
+                if not display.is_initialized():
+                    display.reacquire_hardware()
 
                 # Use SDK's Rust-based image processing
                 # Convert rotation and flips to SDK format
@@ -283,6 +283,9 @@ class EinkComposer:
                     layer.crop_x,
                     layer.crop_y,
                 )
+
+                # Release hardware after processing
+                display.release_hardware()
 
                 if processed_data:
                     # Convert 1-bit packed data to numpy array
@@ -405,14 +408,17 @@ class EinkComposer:
 
             # Use SDK's display functionality with proper rotation enum
             display = self._get_display()
-            if not display._initialized:
-                display.initialize()
+            if not display.is_initialized():
+                display.reacquire_hardware()
 
             # Display using SDK's optimized path with transformations
             # The SDK's display_image method will handle the transformations
             success = display.display_image(
                 tmp_path, mode, rotation=rotation, h_flip=flip_h, v_flip=flip_v
             )
+
+            # Release hardware after display
+            display.release_hardware()
 
             Path(tmp_path).unlink(missing_ok=True)
 
@@ -425,9 +431,10 @@ class EinkComposer:
     def clear_display(self) -> bool:
         try:
             display = self._get_display()
-            if not display._initialized:
-                display.initialize()
+            if not display.is_initialized():
+                display.reacquire_hardware()
             display.clear()
+            display.release_hardware()  # Release after clearing
             return True
         except Exception as e:
             print(f"Clear display error: {e}")

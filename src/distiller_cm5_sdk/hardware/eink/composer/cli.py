@@ -448,20 +448,20 @@ def main():
             sys.exit(1)
 
         try:
-            display = Display()
+            # Use context manager for automatic acquire/release
+            with Display(auto_init=False) as display:
+                if args.hw_command == "info":
+                    width, height = display.get_dimensions()
+                    print(f"Display: {width}x{height} pixels")
+                    print(f"Firmware: {display.get_firmware()}")
 
-            if args.hw_command == "info":
-                width, height = display.get_dimensions()
-                print(f"Display: {width}x{height} pixels")
-                print(f"Firmware: {display.get_firmware_type()}")
+                elif args.hw_command == "clear":
+                    display.clear()
+                    print("✓ Display cleared")
 
-            elif args.hw_command == "clear":
-                display.clear()
-                print("✓ Display cleared")
-
-            elif args.hw_command == "sleep":
-                display.sleep()
-                print("✓ Display in sleep mode")
+                elif args.hw_command == "sleep":
+                    display.sleep()
+                    print("✓ Display in sleep mode")
 
         except Exception as e:
             print(f"Hardware error: {e}", file=sys.stderr)

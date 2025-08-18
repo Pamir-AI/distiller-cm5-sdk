@@ -734,7 +734,7 @@ class Display:
             DisplayError: If display operation fails or path is unsafe
         """
         if not self._initialized:
-            raise DisplayError("Display not initialized. Call initialize() first.")
+            self.reacquire_hardware()
 
         if isinstance(image, str):
             # Validate file path for security
@@ -837,7 +837,7 @@ class Display:
             DisplayError: If clear operation fails
         """
         if not self._initialized:
-            raise DisplayError("Display not initialized. Call initialize() first.")
+            self.reacquire_hardware()
 
         success = self._lib.display_clear()
         if not success:
@@ -887,6 +887,55 @@ class Display:
         if self._initialized:
             self._lib.display_cleanup()
             self._initialized = False
+
+    def release_hardware(self) -> None:
+        """
+        Release GPIO pins and hardware resources while keeping object alive.
+        This allows other processes to use the display.
+        """
+        if self._initialized:
+            self._lib.display_cleanup()
+            self._initialized = False
+            # Note: Keep library loaded and cache intact
+
+    def reacquire_hardware(self, max_retries: int = 5, retry_delay: float = 0.5) -> None:
+        """
+        Re-initialize hardware when needed after release.
+        Will reinitialize configuration and hardware.
+
+        Args:
+            max_retries: Maximum number of retry attempts
+            retry_delay: Delay in seconds between retries
+
+        Raises:
+            DisplayError: If hardware cannot be reacquired
+        """
+        if self._initialized:
+            return
+
+        import time
+
+        for attempt in range(max_retries):
+            try:
+                # Re-initialize configuration if available
+                if hasattr(self, "_config_available") and self._config_available:
+                    config_success = self._lib.display_initialize_config()
+                    if not config_success and attempt == max_retries - 1:
+                        raise DisplayError("Failed to re-initialize display configuration")
+
+                # Re-initialize hardware
+                success = self._lib.display_init()
+                if success:
+                    self._update_dimensions()
+                    self._initialized = True
+                    return
+
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise DisplayError(
+                        f"Failed to reacquire hardware after {max_retries} attempts: {e}"
+                    )
+                time.sleep(retry_delay)
 
     def set_firmware(self, firmware_type: str | FirmwareType) -> None:
         """
@@ -951,14 +1000,14 @@ class Display:
             raise DisplayError("Failed to initialize configuration system")
 
     def __enter__(self):
-        """Context manager entry."""
-        if not self._initialized:
-            self.initialize()
+        """Context manager entry - acquires hardware."""
+        self.reacquire_hardware()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
-        self.close()
+        """Context manager exit - releases hardware."""
+        self.release_hardware()
+        return False
 
     @classmethod
     def clear_cache(cls) -> None:

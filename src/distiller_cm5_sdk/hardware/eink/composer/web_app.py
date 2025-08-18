@@ -53,10 +53,9 @@ async def lifespan(app: FastAPI):
     print("Starting E-ink Composer FastAPI server...")
 
     try:
-        display = Display(auto_init=False)
-        display.initialize()
-        print("Hardware initialized successfully")
-        display.close()
+        # Test hardware access with acquire/release pattern
+        with Display(auto_init=False):
+            print("Hardware initialized successfully")
     except Exception as e:
         print(f"FATAL: E-ink hardware not available: {e}")
         print("This application requires Distiller CM5 e-ink hardware to run.")
@@ -346,19 +345,16 @@ async def hardware_info():
         display = Display(auto_init=False)
 
         try:
-            width, height = display.get_dimensions()
-            info.display_size = f"{width}x{height}"
-            info.width = width
-            info.height = height
-        except:
-            info.display_size = "128x250 (default)"
-
-        try:
-            display.initialize()
-            info.hardware_init = True
-            info.hardware_status = "Available and working"
-            display.close()
+            # Use context manager to acquire/release hardware
+            with display:
+                width, height = display.get_dimensions()
+                info.display_size = f"{width}x{height}"
+                info.width = width
+                info.height = height
+                info.hardware_init = True
+                info.hardware_status = "Available and working"
         except Exception as e:
+            info.display_size = "128x250 (default)"
             info.hardware_init = False
             info.hardware_status = f"SDK available but hardware init failed: {e}"
 
