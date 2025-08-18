@@ -139,6 +139,13 @@ impl<G: GpioController, S: SpiController, F: DisplayFirmware> EinkProtocol
 // Type alias for the default protocol using current firmware
 // Runtime firmware selection
 pub enum ConfigurableProtocol {
+    EPD122x250(
+        GenericEinkProtocol<
+            crate::hardware::DefaultGpioController,
+            crate::hardware::DefaultSpiController,
+            crate::firmware::EPD122x250Firmware,
+        >,
+    ),
     EPD128x250(
         GenericEinkProtocol<
             crate::hardware::DefaultGpioController,
@@ -158,6 +165,7 @@ pub enum ConfigurableProtocol {
 impl EinkProtocol for ConfigurableProtocol {
     fn init_hardware(&mut self) -> Result<(), DisplayError> {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.init_hardware(),
             ConfigurableProtocol::EPD128x250(p) => p.init_hardware(),
             ConfigurableProtocol::EPD240x416(p) => p.init_hardware(),
         }
@@ -165,6 +173,7 @@ impl EinkProtocol for ConfigurableProtocol {
 
     fn init_partial(&mut self) -> Result<(), DisplayError> {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.init_partial(),
             ConfigurableProtocol::EPD128x250(p) => p.init_partial(),
             ConfigurableProtocol::EPD240x416(p) => p.init_partial(),
         }
@@ -172,6 +181,7 @@ impl EinkProtocol for ConfigurableProtocol {
 
     fn write_cmd(&mut self, cmd: u8) -> Result<(), DisplayError> {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.write_cmd(cmd),
             ConfigurableProtocol::EPD128x250(p) => p.write_cmd(cmd),
             ConfigurableProtocol::EPD240x416(p) => p.write_cmd(cmd),
         }
@@ -179,6 +189,7 @@ impl EinkProtocol for ConfigurableProtocol {
 
     fn write_data(&mut self, data: u8) -> Result<(), DisplayError> {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.write_data(data),
             ConfigurableProtocol::EPD128x250(p) => p.write_data(data),
             ConfigurableProtocol::EPD240x416(p) => p.write_data(data),
         }
@@ -186,6 +197,7 @@ impl EinkProtocol for ConfigurableProtocol {
 
     fn write_image_data(&mut self, data: &[u8]) -> Result<(), DisplayError> {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.write_image_data(data),
             ConfigurableProtocol::EPD128x250(p) => p.write_image_data(data),
             ConfigurableProtocol::EPD240x416(p) => p.write_image_data(data),
         }
@@ -193,6 +205,7 @@ impl EinkProtocol for ConfigurableProtocol {
 
     fn check_status(&mut self) -> Result<(), DisplayError> {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.check_status(),
             ConfigurableProtocol::EPD128x250(p) => p.check_status(),
             ConfigurableProtocol::EPD240x416(p) => p.check_status(),
         }
@@ -200,6 +213,7 @@ impl EinkProtocol for ConfigurableProtocol {
 
     fn update_display(&mut self, mode: DisplayMode) -> Result<(), DisplayError> {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.update_display(mode),
             ConfigurableProtocol::EPD128x250(p) => p.update_display(mode),
             ConfigurableProtocol::EPD240x416(p) => p.update_display(mode),
         }
@@ -207,6 +221,7 @@ impl EinkProtocol for ConfigurableProtocol {
 
     fn sleep(&mut self) -> Result<(), DisplayError> {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.sleep(),
             ConfigurableProtocol::EPD128x250(p) => p.sleep(),
             ConfigurableProtocol::EPD240x416(p) => p.sleep(),
         }
@@ -214,6 +229,7 @@ impl EinkProtocol for ConfigurableProtocol {
 
     fn get_spec(&self) -> &crate::firmware::DisplaySpec {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.get_spec(),
             ConfigurableProtocol::EPD128x250(p) => p.get_spec(),
             ConfigurableProtocol::EPD240x416(p) => p.get_spec(),
         }
@@ -221,6 +237,7 @@ impl EinkProtocol for ConfigurableProtocol {
 
     fn get_write_ram_command(&self) -> u8 {
         match self {
+            ConfigurableProtocol::EPD122x250(p) => p.get_write_ram_command(),
             ConfigurableProtocol::EPD128x250(p) => p.get_write_ram_command(),
             ConfigurableProtocol::EPD240x416(p) => p.get_write_ram_command(),
         }
@@ -237,6 +254,11 @@ pub fn create_default_protocol() -> Result<DefaultProtocol, DisplayError> {
     let firmware_type = crate::config::get_default_firmware()?;
 
     match firmware_type {
+        crate::config::FirmwareType::EPD122x250 => {
+            let firmware = crate::firmware::EPD122x250Firmware::new();
+            let protocol = GenericEinkProtocol::new(hardware, firmware);
+            Ok(ConfigurableProtocol::EPD122x250(protocol))
+        }
         crate::config::FirmwareType::EPD128x250 => {
             let firmware = crate::firmware::EPD128x250Firmware::new();
             let protocol = GenericEinkProtocol::new(hardware, firmware);

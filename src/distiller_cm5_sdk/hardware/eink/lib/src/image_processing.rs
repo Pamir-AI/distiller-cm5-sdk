@@ -537,7 +537,9 @@ fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
 /// Pack 1-bit image data into byte array for e-ink display with correct NEON optimization
 #[cfg(target_arch = "aarch64")]
 fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8>, DisplayError> {
-    let mut output = vec![0u8; (width * height + 7) / 8];
+    // Calculate byte-aligned size for non-byte-aligned widths
+    let bytes_per_row = (width + 7) / 8;
+    let mut output = vec![0u8; bytes_per_row * height];
     let data = img.as_raw();
 
     unsafe {
@@ -545,36 +547,43 @@ fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8
         let mut pixel_idx = 0;
         let mut byte_idx = 0;
 
-        // Process 8 pixels at a time (1 byte output)
-        while pixel_idx + 8 <= width * height {
-            let pixels = vld1_u8(data.as_ptr().add(pixel_idx));
-            let mask = vcgt_u8(pixels, threshold);
+        // Process row by row for proper byte alignment
+        for y in 0..height {
+            let row_start = y * width;
+            let row_byte_start = y * bytes_per_row;
+            let mut x = 0;
+            
+            // Process 8 pixels at a time within the row
+            while x + 8 <= width {
+                let pixels = vld1_u8(data.as_ptr().add(row_start + x));
+                let mask = vcgt_u8(pixels, threshold);
 
-            // Extract mask values and pack MSB-first
-            // pixel 0 -> bit 7, pixel 1 -> bit 6, etc.
-            let mask_bytes: [u8; 8] = std::mem::transmute(mask);
-            let mut byte_val = 0u8;
+                // Extract mask values and pack MSB-first
+                // pixel 0 -> bit 7, pixel 1 -> bit 6, etc.
+                let mask_bytes: [u8; 8] = std::mem::transmute(mask);
+                let mut byte_val = 0u8;
 
-            for i in 0..8 {
-                if mask_bytes[i] != 0 {
-                    byte_val |= 1 << (7 - i); // MSB-first ordering!
+                for i in 0..8 {
+                    if mask_bytes[i] != 0 {
+                        byte_val |= 1 << (7 - i); // MSB-first ordering!
+                    }
                 }
-            }
 
-            output[byte_idx] = byte_val;
-            pixel_idx += 8;
-            byte_idx += 1;
-        }
-
-        // Handle remaining pixels
-        while pixel_idx < width * height {
-            let pixel = data[pixel_idx];
-            if pixel > 128 {
-                let byte_idx = pixel_idx / 8;
-                let bit_pos = 7 - (pixel_idx % 8); // MSB-first
-                output[byte_idx] |= 1 << bit_pos;
+                output[row_byte_start + x / 8] = byte_val;
+                x += 8;
             }
-            pixel_idx += 1;
+            
+            // Handle remaining pixels in the row
+            while x < width {
+                let pixel = data[row_start + x];
+                if pixel > 128 {
+                    let byte_idx = row_byte_start + x / 8;
+                    let bit_pos = 7 - (x % 8); // MSB-first
+                    output[byte_idx] |= 1 << bit_pos;
+                }
+                x += 1;
+            }
+            // Padding bits in the last byte of each row are already 0
         }
     }
 
@@ -584,21 +593,24 @@ fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8
 /// Fallback pack_1bit_data for non-ARM64
 #[cfg(not(target_arch = "aarch64"))]
 fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8>, DisplayError> {
-    let mut output = vec![0u8; (width * height + 7) / 8];
+    // Calculate byte-aligned size for non-byte-aligned widths
+    let bytes_per_row = (width + 7) / 8;
+    let mut output = vec![0u8; bytes_per_row * height];
 
     for y in 0..height {
         for x in 0..width {
             let pixel = img.get_pixel(x as u32, y as u32)[0];
             let bit_value = if pixel > 128 { 1 } else { 0 };
 
-            let bit_idx = y * width + x;
-            let byte_idx = bit_idx / 8;
-            let bit_pos = 7 - (bit_idx % 8); // MSB first
+            // Calculate byte index with row-aware alignment
+            let byte_idx = y * bytes_per_row + x / 8;
+            let bit_pos = 7 - (x % 8); // MSB first
 
             if bit_value == 1 {
                 output[byte_idx] |= 1 << bit_pos;
             }
         }
+        // Padding bits in the last byte of each row are already 0
     }
 
     Ok(output)

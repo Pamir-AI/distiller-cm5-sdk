@@ -17,6 +17,9 @@ pub fn convert_png_to_1bit_with_spec(
     }
 
     let mut output = vec![0u8; spec.array_size()];
+    
+    // Calculate bytes per row for proper byte alignment
+    let bytes_per_row = ((spec.width + 7) / 8) as usize;
 
     for y in 0..image.height {
         for x in 0..image.width {
@@ -29,14 +32,15 @@ pub fn convert_png_to_1bit_with_spec(
             // Convert to 1-bit (threshold at 128)
             let bit_value = if gray > 128 { 1 } else { 0 };
 
-            // Pack into output buffer
-            let byte_idx = (y * image.width + x) / 8;
-            let bit_idx = (y * image.width + x) % 8;
+            // Pack into output buffer with row-aware byte alignment
+            let byte_idx = y * bytes_per_row + (x / 8);
+            let bit_idx = 7 - (x % 8);
 
             if bit_value == 1 {
-                output[byte_idx] |= 1 << (7 - bit_idx);
+                output[byte_idx] |= 1 << bit_idx;
             }
         }
+        // Padding bits in the last byte of each row are already 0 from vec![0u8; ...]
     }
 
     Ok(output)

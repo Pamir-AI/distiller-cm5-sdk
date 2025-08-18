@@ -1,10 +1,11 @@
 use crate::error::DisplayError;
-use crate::firmware::{DisplayFirmware, DisplaySpec, EPD128x250Firmware, EPD240x416Firmware};
+use crate::firmware::{DisplayFirmware, DisplaySpec, EPD122x250Firmware, EPD128x250Firmware, EPD240x416Firmware};
 use std::sync::{Mutex, OnceLock};
 
 /// Supported firmware types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FirmwareType {
+    EPD122x250,
     EPD128x250,
     EPD240x416,
 }
@@ -13,6 +14,7 @@ impl FirmwareType {
     /// Create a firmware instance for this type
     pub fn create_firmware(&self) -> Box<dyn DisplayFirmware> {
         match self {
+            FirmwareType::EPD122x250 => Box::new(EPD122x250Firmware::new()),
             FirmwareType::EPD128x250 => Box::new(EPD128x250Firmware::new()),
             FirmwareType::EPD240x416 => Box::new(EPD240x416Firmware::new()),
         }
@@ -26,10 +28,11 @@ impl FirmwareType {
     /// Parse firmware type from string
     pub fn from_str(s: &str) -> Result<Self, DisplayError> {
         match s.to_lowercase().as_str() {
+            "epd122x250" | "122x250" => Ok(FirmwareType::EPD122x250),
             "epd128x250" | "128x250" => Ok(FirmwareType::EPD128x250),
             "epd240x416" | "240x416" => Ok(FirmwareType::EPD240x416),
             _ => Err(DisplayError::Config(format!(
-                "Unknown firmware type: {}. Supported types: EPD128x250, EPD240x416",
+                "Unknown firmware type: {}. Supported types: EPD122x250, EPD128x250, EPD240x416",
                 s
             ))),
         }
@@ -38,6 +41,7 @@ impl FirmwareType {
     /// Get string representation
     pub fn as_str(&self) -> &'static str {
         match self {
+            FirmwareType::EPD122x250 => "EPD122x250",
             FirmwareType::EPD128x250 => "EPD128x250",
             FirmwareType::EPD240x416 => "EPD240x416",
         }
@@ -90,8 +94,8 @@ impl DisplayConfig {
         // No configuration found - fail
         Err(DisplayError::Config(
             "E-ink display configuration not found. \
-            Set DISTILLER_EINK_FIRMWARE environment variable to 'EPD128x250' or 'EPD240x416', \
-            or create /opt/distiller-cm5-sdk/eink.conf with 'firmware=EPD128x250' or 'firmware=EPD240x416'".to_string()
+            Set DISTILLER_EINK_FIRMWARE environment variable to 'EPD122x250', 'EPD128x250' or 'EPD240x416', \
+            or create /opt/distiller-cm5-sdk/eink.conf with 'firmware=EPD122x250', 'firmware=EPD128x250' or 'firmware=EPD240x416'".to_string()
         ))
     }
 }
@@ -175,6 +179,14 @@ mod tests {
 
     #[test]
     fn test_firmware_type_parsing() {
+        assert_eq!(
+            FirmwareType::from_str("EPD122x250").unwrap(),
+            FirmwareType::EPD122x250
+        );
+        assert_eq!(
+            FirmwareType::from_str("122x250").unwrap(),
+            FirmwareType::EPD122x250
+        );
         assert_eq!(
             FirmwareType::from_str("EPD128x250").unwrap(),
             FirmwareType::EPD128x250

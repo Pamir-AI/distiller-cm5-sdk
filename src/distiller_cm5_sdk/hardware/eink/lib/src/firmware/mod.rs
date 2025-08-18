@@ -1,8 +1,10 @@
 use crate::error::DisplayError;
 
+pub mod epd122x250;
 pub mod epd128x250;
 pub mod epd240x416;
 
+pub use epd122x250::EPD122x250Firmware;
 pub use epd128x250::EPD128x250Firmware;
 pub use epd240x416::EPD240x416Firmware;
 
@@ -17,7 +19,9 @@ pub struct DisplaySpec {
 
 impl DisplaySpec {
     pub fn array_size(&self) -> usize {
-        ((self.width * self.height) / 8) as usize
+        // Calculate byte-aligned array size for non-byte-aligned widths
+        // Each row must be padded to the nearest byte boundary
+        (((self.width + 7) / 8) * self.height) as usize
     }
 }
 

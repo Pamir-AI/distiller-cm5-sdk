@@ -34,6 +34,7 @@ class DisplayMode(IntEnum):
 class FirmwareType(Enum):
     """Supported e-ink display firmware types."""
 
+    EPD122x250 = "EPD122x250"
     EPD128x250 = "EPD128x250"
     EPD240x416 = "EPD240x416"
 
@@ -610,7 +611,7 @@ class Display:
                 raise DisplayError(
                     "Failed to initialize display configuration. "
                     "Set DISTILLER_EINK_FIRMWARE environment variable to "
-                    "'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+                    "'EPD122x250', 'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
                 )
 
         success = self._lib.display_init()
@@ -645,7 +646,7 @@ class Display:
             raise DisplayError(
                 f"Failed to get display dimensions from library: {e}. "
                 "Ensure DISTILLER_EINK_FIRMWARE environment variable is set to "
-                "'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+                "'EPD122x250', 'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
             )
 
     def get_dimensions(self) -> tuple[int, int]:
@@ -670,7 +671,7 @@ class Display:
                     raise DisplayError(
                         "Display dimensions not configured. "
                         "Set DISTILLER_EINK_FIRMWARE environment variable to "
-                        "'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+                        "'EPD122x250', 'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
                     )
                 return (self.WIDTH, self.HEIGHT)
         return (self.WIDTH, self.HEIGHT)
