@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Display module for CM5 SDK.
-Provides functionality for e-ink display control and image display.
-"""
+"""E-ink display control and image display."""
 
 import ctypes
 import hashlib
@@ -20,17 +17,23 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-# Import native dithering module
-try:
-    from . import dithering
-    NATIVE_DITHERING_AVAILABLE = True
-except ImportError:
-    NATIVE_DITHERING_AVAILABLE = False
-    logger.warning("Native dithering module not available, falling back to PIL")
+
+class DisplayConstants:
+    """Display configuration constants."""
+
+    FIRMWARE_BUFFER_SIZE = 64
+    FORMATS_BUFFER_SIZE = 256
+    DEFAULT_CACHE_SIZE = 100
+    MAX_RETRIES = 5
+    RETRY_DELAY = 0.5
+    # Grayscale conversion weights
+    GRAYSCALE_R_WEIGHT = 77
+    GRAYSCALE_G_WEIGHT = 151
+    GRAYSCALE_B_WEIGHT = 30
 
 
 class DisplayError(Exception):
-    """Custom exception for Display-related errors."""
+    """Display operation error."""
 
     pass
 
@@ -38,80 +41,66 @@ class DisplayError(Exception):
 class DisplayMode(IntEnum):
     """Display refresh modes."""
 
-    FULL = 0  # Full refresh - slow but high quality
-    PARTIAL = 1  # Partial refresh - fast updates
+    FULL = 0  # Full refresh
+    PARTIAL = 1  # Partial refresh
 
 
 class FirmwareType(Enum):
-    """Supported e-ink display firmware types."""
+    """E-ink firmware types."""
 
     EPD128x250 = "EPD128x250"
     EPD240x416 = "EPD240x416"
 
 
 class ScalingMethod(IntEnum):
-    """Image scaling methods for auto-conversion."""
+    """Image scaling methods."""
 
-    LETTERBOX = 0  # Maintain aspect ratio, add black borders
-    CROP_CENTER = 1  # Center crop to fill display
-    STRETCH = 2  # Stretch to fill display (may distort)
+    LETTERBOX = 0  # Maintain aspect ratio
+    CROP_CENTER = 1  # Center crop
+    STRETCH = 2  # Stretch to fill
 
 
 class DitheringMethod(IntEnum):
-    """Dithering methods for 1-bit conversion."""
+    """Dithering methods."""
 
-    NONE = 0  # No dithering, simple threshold
-    FLOYD_STEINBERG = 1  # High quality dithering
-    SIERRA = 2  # Sierra dithering (3-row error diffusion)
-    SIERRA_2ROW = 3  # Sierra 2-row dithering (faster)
-    SIERRA_LITE = 4  # Sierra Lite dithering (fastest)
-    SIMPLE = 5  # Fast threshold conversion (legacy)
+    NONE = 0
+    FLOYD_STEINBERG = 1
+    SIERRA = 2
+    SIERRA_2ROW = 3
+    SIERRA_LITE = 4
+    SIMPLE = 5  # Legacy
 
 
 class RotationMode(IntEnum):
-    """Image rotation modes."""
+    """Rotation modes."""
 
-    NONE = 0  # No rotation
-    ROTATE_90 = 1  # 90 degrees clockwise
-    ROTATE_180 = 2  # 180 degrees
-    ROTATE_270 = 3  # 270 degrees clockwise (equivalent to 90 CCW)
+    NONE = 0
+    ROTATE_90 = 1  # 90° CW
+    ROTATE_180 = 2  # 180°
+    ROTATE_270 = 3  # 270° CW
 
 
 class ImageCacheManager:
-    """
-    Manages caching of converted images to avoid repeated processing.
-    Uses LRU cache with JSON-based persistence for security.
-    Thread-safe implementation.
-    """
+    """Thread-safe LRU cache for converted images."""
 
-    # Class-level lock for thread safety
     _lock = threading.RLock()
 
-    def __init__(self, max_size: int = 100, persist_path: str | None = None):
-        """
-        Initialize the image cache manager.
-
-        Args:
-            max_size: Maximum number of cached entries
-            persist_path: Optional path to persist cache between sessions
-        """
+    def __init__(
+        self, max_size: int = DisplayConstants.DEFAULT_CACHE_SIZE, persist_path: str | None = None
+    ):
         self.max_size = max_size
         self.persist_path = persist_path
         self._cache: dict[str, dict[str, Any]] = {}
         self._temp_files: dict[str, str] = {}  # Track temp files for cleanup
         self._finalizer = None
 
-        # Load persisted cache if available (JSON format for security)
         if persist_path and os.path.exists(persist_path):
             self._load_cache_from_json(persist_path)
-
-        # Use weakref finalizer instead of atexit to avoid circular references
         self._finalizer = weakref.finalize(
             self, self._cleanup_static, list(self._temp_files.values())
         )
 
     def _load_cache_from_json(self, persist_path: str) -> None:
-        """Load cache from JSON file with validation."""
         try:
             with open(persist_path) as f:
                 saved_cache = json.load(f)
@@ -121,7 +110,7 @@ class ImageCacheManager:
                     return
 
                 cache_version = saved_cache.get("version", 0)
-                if cache_version != 1:  # Current cache version
+                if cache_version != 1:
                     return
 
                 entries = saved_cache.get("entries", {})
@@ -138,7 +127,6 @@ class ImageCacheManager:
             print(f"Warning: Could not load cache from {persist_path}: {e}")
 
     def _validate_cache_entry(self, entry: Any) -> bool:
-        """Validate cache entry structure for security."""
         if not isinstance(entry, dict):
             return False
 
@@ -155,7 +143,6 @@ class ImageCacheManager:
 
     @staticmethod
     def _cleanup_static(temp_files: list[str]) -> None:
-        """Static cleanup method to avoid circular references."""
         for temp_path in temp_files:
             try:
                 if os.path.exists(temp_path):
@@ -176,7 +163,6 @@ class ImageCacheManager:
         crop_x: int | None,
         crop_y: int | None,
     ) -> str:
-        """Generate a unique cache key for the conversion parameters."""
         # Get file modification time for cache invalidation
         try:
             if os.path.exists(image_path):
@@ -219,12 +205,6 @@ class ImageCacheManager:
         crop_x: int | None,
         crop_y: int | None,
     ) -> str | None:
-        """
-        Get cached converted image path if available. Thread-safe.
-
-        Returns:
-            Path to cached temporary file, or None if not cached
-        """
         with self._lock:
             key = self._generate_cache_key(
                 image_path,
@@ -268,12 +248,6 @@ class ImageCacheManager:
         crop_y: int | None,
         temp_path: str,
     ) -> None:
-        """
-        Store converted image in cache. Thread-safe.
-
-        Args:
-            temp_path: Path to the converted temporary file
-        """
         with self._lock:
             # Validate temp_path is in temp directory
             if not temp_path.startswith(tempfile.gettempdir()):
@@ -327,7 +301,6 @@ class ImageCacheManager:
             self._persist()
 
     def _remove_entry(self, key: str) -> None:
-        """Remove a cache entry and clean up its temp file."""
         self._cache.pop(key, None)
         temp_path = self._temp_files.pop(key, None)
 
@@ -339,7 +312,6 @@ class ImageCacheManager:
                 pass
 
     def clear(self) -> None:
-        """Clear all cached entries and clean up temp files. Thread-safe."""
         with self._lock:
             for key in list(self._cache.keys()):
                 self._remove_entry(key)
@@ -355,7 +327,6 @@ class ImageCacheManager:
                     pass
 
     def get_stats(self) -> dict[str, Any]:
-        """Get cache statistics. Thread-safe."""
         with self._lock:
             total_size = 0
             for temp_path in set(self._temp_files.values()):
@@ -372,7 +343,6 @@ class ImageCacheManager:
             }
 
     def _persist(self) -> None:
-        """Persist cache to disk if configured. Uses JSON for security."""
         if not self.persist_path:
             return
 
@@ -392,7 +362,6 @@ class ImageCacheManager:
             print(f"Warning: Could not persist cache to {self.persist_path}: {e}")
 
     def cleanup(self) -> None:
-        """Cleanup temp files on exit. Thread-safe."""
         with self._lock:
             # Only cleanup files that are not persisted
             if not self.persist_path:
@@ -405,30 +374,14 @@ class ImageCacheManager:
 
 
 class Display:
-    """
-    Display class for interacting with the CM5 e-ink display system.
+    """E-ink display interface."""
 
-    This class provides functionality to:
-    - Display PNG images on the e-ink screen
-    - Display raw 1-bit image data
-    - Clear the display
-    - Control display refresh modes
-    - Manage display power states
-    - Cache converted images for improved performance
+    WIDTH = None
+    HEIGHT = None
+    ARRAY_SIZE = None
 
-    Thread-safe implementation with singleton pattern option.
-    """
-
-    # Display constants - must be configured before use
-    WIDTH = None  # Must be set from configuration
-    HEIGHT = None  # Must be set from configuration
-    ARRAY_SIZE = None  # Must be set from configuration
-
-    # Shared resources with thread safety
     _cache_manager: ImageCacheManager | None = None
     _cache_lock = threading.Lock()
-
-    # Security: Allowed directories for image access
     _allowed_dirs: list[str] = [
         os.path.expanduser("~"),
         "/tmp",
@@ -441,24 +394,10 @@ class Display:
         library_path: str | None = None,
         auto_init: bool = True,
         enable_cache: bool = True,
-        cache_size: int = 100,
+        cache_size: int = DisplayConstants.DEFAULT_CACHE_SIZE,
         cache_persist_path: str | None = None,
         allowed_dirs: list[str] | None = None,
     ):
-        """
-        Initialize the Display object.
-
-        Args:
-            library_path: Optional path to the shared library. If None, searches common locations.
-            auto_init: Whether to automatically initialize the display hardware
-            enable_cache: Whether to enable image caching
-            cache_size: Maximum number of cached entries
-            cache_persist_path: Optional path to persist cache between sessions
-            allowed_dirs: Optional list of allowed directories for image access
-
-        Raises:
-            DisplayError: If library can't be loaded or display can't be initialized
-        """
         self._lib = None
         self._initialized = False
 
@@ -466,11 +405,9 @@ class Display:
         if allowed_dirs:
             self._allowed_dirs = [os.path.abspath(d) for d in allowed_dirs]
 
-        # Initialize cache manager if enabled (thread-safe)
         if enable_cache:
             with Display._cache_lock:
                 if Display._cache_manager is None:
-                    # Default persist path if not specified
                     if cache_persist_path is None:
                         cache_dir = os.path.expanduser("~/.cache/distiller_eink")
                         cache_persist_path = os.path.join(cache_dir, "image_cache.json")
@@ -479,7 +416,6 @@ class Display:
                         max_size=cache_size, persist_path=cache_persist_path
                     )
 
-        # Find and load the shared library
         if library_path is None:
             library_path = self._find_library()
 
@@ -491,18 +427,13 @@ class Display:
         except OSError as e:
             raise DisplayError(f"Failed to load display library: {e}")
 
-        # Set up function signatures
         self._setup_function_signatures()
 
         if auto_init:
             self.initialize()
 
     def _find_library(self) -> str:
-        """Find the shared library in common locations."""
-        # Get the directory of this Python file
         current_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # Common search paths
         search_paths = [
             # Debian package location
             "/opt/distiller-cm5-sdk/lib/libdistiller_display_sdk_shared.so",
@@ -526,8 +457,6 @@ class Display:
         )
 
     def _setup_function_signatures(self):
-        """Set up ctypes function signatures for all C functions."""
-
         # display_init() -> bool
         self._lib.display_init.restype = c_bool
         self._lib.display_init.argtypes = []
@@ -536,9 +465,9 @@ class Display:
         self._lib.display_image_raw.restype = c_bool
         self._lib.display_image_raw.argtypes = [ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int]
 
-        # display_image_png(const char* filename, display_mode_t mode) -> bool
-        self._lib.display_image_png.restype = c_bool
-        self._lib.display_image_png.argtypes = [c_char_p, ctypes.c_int]
+        # display_image_file(const char* filename, display_mode_t mode) -> bool
+        self._lib.display_image_file.restype = c_bool
+        self._lib.display_image_file.argtypes = [c_char_p, ctypes.c_int]
 
         # display_clear() -> bool
         self._lib.display_clear.restype = c_bool
@@ -556,77 +485,52 @@ class Display:
         self._lib.display_get_dimensions.restype = None
         self._lib.display_get_dimensions.argtypes = [POINTER(c_uint32), POINTER(c_uint32)]
 
-        # convert_png_to_1bit(const char* filename, uint8_t* output_data) -> bool
-        self._lib.convert_png_to_1bit.restype = c_bool
-        self._lib.convert_png_to_1bit.argtypes = [c_char_p, ctypes.POINTER(ctypes.c_ubyte)]
+        # convert_image_to_1bit(const char* filename, uint8_t* output_data) -> bool
+        self._lib.convert_image_to_1bit.restype = c_bool
+        self._lib.convert_image_to_1bit.argtypes = [c_char_p, ctypes.POINTER(ctypes.c_ubyte)]
 
-        # Configuration functions (optional - may not exist in older libraries)
-        try:
-            # display_set_firmware(const char* firmware_str) -> bool
-            self._lib.display_set_firmware.restype = c_bool
-            self._lib.display_set_firmware.argtypes = [c_char_p]
+        # Configuration functions (required)
+        self._lib.display_set_firmware.restype = c_bool
+        self._lib.display_set_firmware.argtypes = [c_char_p]
 
-            # display_get_firmware(char* firmware_str, uint32_t max_len) -> bool
-            self._lib.display_get_firmware.restype = c_bool
-            self._lib.display_get_firmware.argtypes = [ctypes.c_char_p, c_uint32]
+        self._lib.display_get_firmware.restype = c_bool
+        self._lib.display_get_firmware.argtypes = [ctypes.c_char_p, c_uint32]
 
-            # display_initialize_config() -> bool
-            self._lib.display_initialize_config.restype = c_bool
-            self._lib.display_initialize_config.argtypes = []
+        self._lib.display_initialize_config.restype = c_bool
+        self._lib.display_initialize_config.argtypes = []
 
-            self._config_available = True
-        except AttributeError:
-            # Configuration functions not available in this library version
-            self._config_available = False
+        # Image processing functions (required)
+        self._lib.process_image_auto.restype = c_bool
+        self._lib.process_image_auto.argtypes = [
+            c_char_p,
+            ctypes.POINTER(ctypes.c_ubyte),
+            ctypes.c_int,  # scaling
+            ctypes.c_int,  # dithering
+            ctypes.c_int,  # rotation
+            ctypes.c_int,  # h_flip
+            ctypes.c_int,  # v_flip
+            ctypes.c_int,  # crop_x
+            ctypes.c_int,  # crop_y
+        ]
 
-        # New image processing functions (optional - may not exist in older libraries)
-        try:
-            # process_image_auto(filename, output_data, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y) -> bool
-            self._lib.process_image_auto.restype = c_bool
-            self._lib.process_image_auto.argtypes = [
-                c_char_p,
-                ctypes.POINTER(ctypes.c_ubyte),
-                ctypes.c_int,  # scaling
-                ctypes.c_int,  # dithering
-                ctypes.c_int,  # rotation
-                ctypes.c_int,  # h_flip
-                ctypes.c_int,  # v_flip
-                ctypes.c_int,  # crop_x
-                ctypes.c_int,  # crop_y
-            ]
+        self._lib.is_image_format_supported.restype = c_bool
+        self._lib.is_image_format_supported.argtypes = [c_char_p]
 
-            # is_image_format_supported(filename) -> bool
-            self._lib.is_image_format_supported.restype = c_bool
-            self._lib.is_image_format_supported.argtypes = [c_char_p]
-
-            # get_supported_image_formats(formats, max_len) -> bool
-            self._lib.get_supported_image_formats.restype = c_bool
-            self._lib.get_supported_image_formats.argtypes = [ctypes.c_char_p, c_uint32]
-
-            self._rust_processing_available = True
-        except AttributeError:
-            # Rust image processing not available
-            self._rust_processing_available = False
+        self._lib.get_supported_image_formats.restype = c_bool
+        self._lib.get_supported_image_formats.argtypes = [ctypes.c_char_p, c_uint32]
 
     def initialize(self) -> None:
-        """
-        Initialize the display hardware.
-
-        Raises:
-            DisplayError: If initialization fails
-        """
         if self._initialized:
             return
 
-        # Initialize configuration system first (required)
-        if hasattr(self, "_config_available") and self._config_available:
-            config_success = self._lib.display_initialize_config()
-            if not config_success:
-                raise DisplayError(
-                    "Failed to initialize display configuration. "
-                    "Set DISTILLER_EINK_FIRMWARE environment variable to "
-                    "'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
-                )
+        # Initialize configuration system (required)
+        config_success = self._lib.display_initialize_config()
+        if not config_success:
+            raise DisplayError(
+                "Failed to initialize display configuration. "
+                "Set DISTILLER_EINK_FIRMWARE environment variable to "
+                "'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+            )
 
         success = self._lib.display_init()
         if not success:
@@ -638,7 +542,6 @@ class Display:
         self._initialized = True
 
     def _update_dimensions(self) -> None:
-        """Update display dimensions from the library."""
         try:
             width_ptr = ctypes.pointer(c_uint32())
             height_ptr = ctypes.pointer(c_uint32())
@@ -656,23 +559,12 @@ class Display:
                 Display.ARRAY_SIZE = self.ARRAY_SIZE
 
         except (AttributeError, TypeError, OSError) as e:
-            # Fail-fast: no fallback to defaults
             raise DisplayError(
                 f"Failed to get display dimensions from library: {e}. "
-                "Ensure DISTILLER_EINK_FIRMWARE environment variable is set to "
-                "'EPD128x250' or 'EPD240x416', or create /opt/distiller-cm5-sdk/eink.conf"
+                "Ensure DISTILLER_EINK_FIRMWARE environment variable is set."
             )
 
     def get_dimensions(self) -> tuple[int, int]:
-        """
-        Get display dimensions.
-
-        Returns:
-            Tuple of (width, height) in pixels
-
-        Raises:
-            DisplayError: If dimensions are not configured
-        """
         if not self._initialized:
             # Try to get dimensions without initializing
             try:
@@ -691,15 +583,7 @@ class Display:
         return (self.WIDTH, self.HEIGHT)
 
     def _validate_path(self, path: str) -> None:
-        """
-        Validate that a file path is safe and within allowed directories.
-
-        Args:
-            path: Path to validate
-
-        Raises:
-            DisplayError: If path is unsafe or outside allowed directories
-        """
+        """Validate file path is safe and within allowed directories."""
         # Resolve the absolute path
         abs_path = os.path.abspath(path)
 
@@ -725,23 +609,31 @@ class Display:
         self,
         image: str | bytes,
         mode: DisplayMode = DisplayMode.FULL,
+        scaling: ScalingMethod = ScalingMethod.LETTERBOX,
+        dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
         rotation: RotationMode = RotationMode.NONE,
         h_flip: bool = False,
         v_flip: bool = False,
         invert_colors: bool = False,
-        src_width: int = None,
-        src_height: int = None,
+        crop_x: int | None = None,
+        crop_y: int | None = None,
+        src_width: int | None = None,
+        src_height: int | None = None,
     ) -> None:
         """
         Display an image on the e-ink screen.
 
         Args:
-            image: Either a PNG file path (string) or raw 1-bit image data (bytes)
+            image: Either an image file path (string) or raw 1-bit image data (bytes)
             mode: Display refresh mode
+            scaling: How to scale the image (for file paths only)
+            dithering: Dithering method for 1-bit conversion (for file paths only)
             rotation: Rotation mode (NONE, ROTATE_90, ROTATE_180, ROTATE_270)
             h_flip: If True, mirror the image horizontally (left-right)
             v_flip: If True, mirror the image vertically (top-bottom)
             invert_colors: If True, invert colors (black↔white)
+            crop_x: X position for crop when using CROP_CENTER (None = center)
+            crop_y: Y position for crop when using CROP_CENTER (None = center)
             src_width: Source width in pixels (required when transforming raw data)
             src_height: Source height in pixels (required when transforming raw data)
 
@@ -754,8 +646,40 @@ class Display:
         if isinstance(image, str):
             # Validate file path for security
             self._validate_path(image)
-            # PNG file path
-            self._display_png(image, mode, rotation, h_flip, v_flip, invert_colors)
+
+            # Check if we need to convert the image
+            needs_conversion = (
+                scaling != ScalingMethod.LETTERBOX
+                or dithering != DitheringMethod.FLOYD_STEINBERG
+                or crop_x is not None
+                or crop_y is not None
+                or not image.lower().endswith(".png")
+            )
+
+            if needs_conversion:
+                # Convert image with specified settings
+                temp_path = self._convert_image_auto(
+                    image, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
+                )
+                try:
+                    # Display the converted image (no additional transformations needed)
+                    self._display_image_file(
+                        temp_path, mode, RotationMode.NONE, False, False, invert_colors
+                    )
+                finally:
+                    # Clean up temp file if not cached
+                    if temp_path and os.path.exists(temp_path):
+                        if (
+                            not Display._cache_manager
+                            or temp_path not in Display._cache_manager._temp_files.values()
+                        ):
+                            try:
+                                os.unlink(temp_path)
+                            except OSError:
+                                pass
+            else:
+                # Direct display for PNG files
+                self._display_image_file(image, mode, rotation, h_flip, v_flip, invert_colors)
         elif isinstance(image, bytes | bytearray):
             # Raw image data
             raw_data = bytes(image)
@@ -766,28 +690,41 @@ class Display:
                         "src_width and src_height are required when transforming raw data"
                     )
 
-                # Apply transformations in order: h_flip, v_flip, rotate, then invert colors
+                # Apply transformations in order
                 if h_flip:
-                    raw_data = h_flip_bitpacked(raw_data, src_width, src_height)
-
+                    raw_data = transform_bitpacked(
+                        raw_data, src_width, src_height, TransformOperation.FLIP_H
+                    )
                 if v_flip:
-                    raw_data = v_flip_bitpacked(raw_data, src_width, src_height)
-
+                    raw_data = transform_bitpacked(
+                        raw_data, src_width, src_height, TransformOperation.FLIP_V
+                    )
                 if rotation == RotationMode.ROTATE_90:
-                    raw_data = rotate_bitpacked_cw_90(raw_data, src_width, src_height)
+                    raw_data = transform_bitpacked(
+                        raw_data, src_width, src_height, TransformOperation.ROTATE_90_CW
+                    )
+                    # Update dimensions after rotation
+                    src_width, src_height = src_height, src_width
                 elif rotation == RotationMode.ROTATE_180:
-                    raw_data = rotate_bitpacked_180(raw_data, src_width, src_height)
+                    raw_data = transform_bitpacked(
+                        raw_data, src_width, src_height, TransformOperation.ROTATE_180
+                    )
                 elif rotation == RotationMode.ROTATE_270:
-                    raw_data = rotate_bitpacked_ccw_90(raw_data, src_width, src_height)
-
+                    raw_data = transform_bitpacked(
+                        raw_data, src_width, src_height, TransformOperation.ROTATE_90_CCW
+                    )
+                    # Update dimensions after rotation
+                    src_width, src_height = src_height, src_width
                 if invert_colors:
-                    raw_data = invert_bitpacked_colors(raw_data)
+                    raw_data = transform_bitpacked(
+                        raw_data, src_width, src_height, TransformOperation.INVERT
+                    )
 
             self._display_raw(raw_data, mode)
         else:
             raise DisplayError(f"Invalid image type: {type(image)}. Expected str or bytes.")
 
-    def _display_png(
+    def _display_image_file(
         self,
         filename: str,
         mode: DisplayMode,
@@ -796,47 +733,56 @@ class Display:
         v_flip: bool = False,
         invert_colors: bool = False,
     ) -> None:
-        """Display a PNG image file."""
+        """Display an image file."""
         # Path already validated in display_image()
         if not os.path.exists(filename):
-            raise DisplayError(f"PNG file not found: {filename}")
+            raise DisplayError(f"Image file not found: {filename}")
 
         if rotation != RotationMode.NONE or h_flip or v_flip or invert_colors:
-            # For PNG transformations, convert to raw data first
-            raw_data = self.convert_png_to_raw(filename)
-            # Assume PNG is 250x128 landscape format when transforming
+            # For image transformations, convert to raw data first
+            raw_data = self.convert_image_to_raw(filename)
+            # Assume image is 250x128 landscape format when transforming
             src_width, src_height = 250, 128
 
-            # Apply transformations in order: h_flip, v_flip, rotate, then invert colors
+            # Apply transformations
             if h_flip:
-                raw_data = h_flip_bitpacked(raw_data, src_width, src_height)
-
+                raw_data = transform_bitpacked(
+                    raw_data, src_width, src_height, TransformOperation.FLIP_H
+                )
             if v_flip:
-                raw_data = v_flip_bitpacked(raw_data, src_width, src_height)
-
+                raw_data = transform_bitpacked(
+                    raw_data, src_width, src_height, TransformOperation.FLIP_V
+                )
             if rotation == RotationMode.ROTATE_90:
-                raw_data = rotate_bitpacked_cw_90(raw_data, src_width, src_height)
+                raw_data = transform_bitpacked(
+                    raw_data, src_width, src_height, TransformOperation.ROTATE_90_CW
+                )
             elif rotation == RotationMode.ROTATE_180:
-                raw_data = rotate_bitpacked_180(raw_data, src_width, src_height)
+                raw_data = transform_bitpacked(
+                    raw_data, src_width, src_height, TransformOperation.ROTATE_180
+                )
             elif rotation == RotationMode.ROTATE_270:
-                raw_data = rotate_bitpacked_ccw_90(raw_data, src_width, src_height)
-
+                raw_data = transform_bitpacked(
+                    raw_data, src_width, src_height, TransformOperation.ROTATE_90_CCW
+                )
             if invert_colors:
-                raw_data = invert_bitpacked_colors(raw_data)
+                raw_data = transform_bitpacked(
+                    raw_data, src_width, src_height, TransformOperation.INVERT
+                )
 
             self._display_raw(raw_data, mode)
         else:
             # Direct PNG display (must be 128x250)
             # First convert PNG to raw data for capture functionality
             try:
-                raw_data = self.convert_png_to_raw(filename)
+                raw_data = self.convert_image_to_raw(filename)
                 self._last_display_data = raw_data
             except Exception:
                 # If conversion fails, still try to display
                 pass
 
             filename_bytes = filename.encode("utf-8")
-            success = self._lib.display_image_png(filename_bytes, int(mode))
+            success = self._lib.display_image_file(filename_bytes, int(mode))
             if not success:
                 raise DisplayError(f"Failed to display PNG image: {filename}")
 
@@ -874,12 +820,12 @@ class Display:
         if self._initialized:
             self._lib.display_sleep()
 
-    def convert_png_to_raw(self, filename: str) -> bytes:
+    def convert_image_to_raw(self, filename: str) -> bytes:
         """
-        Convert PNG file to raw 1-bit data.
+        Convert image file to raw 1-bit data.
 
         Args:
-            filename: Path to PNG file (must be exactly 128x250 pixels)
+            filename: Path to image file (must be exactly 128x250 pixels)
 
         Returns:
             Raw 1-bit packed image data (4000 bytes)
@@ -891,21 +837,20 @@ class Display:
         self._validate_path(filename)
 
         if not os.path.exists(filename):
-            raise DisplayError(f"PNG file not found: {filename}")
+            raise DisplayError(f"Image file not found: {filename}")
 
         # Create output buffer
         output_data = (ctypes.c_ubyte * self.ARRAY_SIZE)()
         filename_bytes = filename.encode("utf-8")
 
-        success = self._lib.convert_png_to_1bit(filename_bytes, output_data)
+        success = self._lib.convert_image_to_1bit(filename_bytes, output_data)
         if not success:
-            raise DisplayError(f"Failed to convert PNG: {filename}")
+            raise DisplayError(f"Failed to convert image: {filename}")
 
         # Convert ctypes array to bytes
         return bytes(output_data)
 
     def is_initialized(self) -> bool:
-        """Check if display is initialized."""
         return self._initialized
 
     def close(self) -> None:
@@ -924,7 +869,11 @@ class Display:
             self._initialized = False
             # Note: Keep library loaded and cache intact
 
-    def reacquire_hardware(self, max_retries: int = 5, retry_delay: float = 0.5) -> None:
+    def reacquire_hardware(
+        self,
+        max_retries: int = DisplayConstants.MAX_RETRIES,
+        retry_delay: float = DisplayConstants.RETRY_DELAY,
+    ) -> None:
         """
         Re-initialize hardware when needed after release.
         Will reinitialize configuration and hardware.
@@ -943,11 +892,10 @@ class Display:
 
         for attempt in range(max_retries):
             try:
-                # Re-initialize configuration if available
-                if hasattr(self, "_config_available") and self._config_available:
-                    config_success = self._lib.display_initialize_config()
-                    if not config_success and attempt == max_retries - 1:
-                        raise DisplayError("Failed to re-initialize display configuration")
+                # Re-initialize configuration
+                config_success = self._lib.display_initialize_config()
+                if not config_success and attempt == max_retries - 1:
+                    raise DisplayError("Failed to re-initialize display configuration")
 
                 # Re-initialize hardware
                 success = self._lib.display_init()
@@ -973,10 +921,6 @@ class Display:
         Raises:
             DisplayError: If firmware type is invalid or setting fails
         """
-        if not (hasattr(self, "_config_available") and self._config_available):
-            raise DisplayError(
-                "Configuration system not available. Please rebuild the Rust library."
-            )
 
         if isinstance(firmware_type, FirmwareType):
             firmware_str = firmware_type.value
@@ -997,13 +941,8 @@ class Display:
         Raises:
             DisplayError: If getting firmware fails
         """
-        if not (hasattr(self, "_config_available") and self._config_available):
-            raise DisplayError(
-                "Configuration system not available. Please rebuild the Rust library."
-            )
-
-        buffer = ctypes.create_string_buffer(64)  # Should be enough for firmware names
-        success = self._lib.display_get_firmware(buffer, 64)
+        buffer = ctypes.create_string_buffer(DisplayConstants.FIRMWARE_BUFFER_SIZE)
+        success = self._lib.display_get_firmware(buffer, DisplayConstants.FIRMWARE_BUFFER_SIZE)
         if not success:
             raise DisplayError("Failed to get current firmware type")
         return buffer.value.decode("utf-8")
@@ -1016,10 +955,6 @@ class Display:
         Raises:
             DisplayError: If configuration initialization fails
         """
-        if not (hasattr(self, "_config_available") and self._config_available):
-            raise DisplayError(
-                "Configuration system not available. Please rebuild the Rust library."
-            )
 
         success = self._lib.display_initialize_config()
         if not success:
@@ -1113,9 +1048,6 @@ class Display:
         Returns:
             True if format is supported
         """
-        if not hasattr(self, "_rust_processing_available") or not self._rust_processing_available:
-            # Fallback to PNG only
-            return image_path.lower().endswith(".png")
 
         filename_bytes = image_path.encode("utf-8")
         return bool(self._lib.is_image_format_supported(filename_bytes))
@@ -1127,11 +1059,10 @@ class Display:
         Returns:
             List of supported file extensions
         """
-        if not hasattr(self, "_rust_processing_available") or not self._rust_processing_available:
-            return ["png"]
-
-        buffer = ctypes.create_string_buffer(256)
-        success = self._lib.get_supported_image_formats(buffer, 256)
+        buffer = ctypes.create_string_buffer(DisplayConstants.FORMATS_BUFFER_SIZE)
+        success = self._lib.get_supported_image_formats(
+            buffer, DisplayConstants.FORMATS_BUFFER_SIZE
+        )
 
         if success:
             formats_str = buffer.value.decode("utf-8")
@@ -1139,7 +1070,7 @@ class Display:
 
         return ["png"]
 
-    def _convert_png_auto(
+    def _convert_image_auto(
         self,
         image_path: str,
         scaling: ScalingMethod = ScalingMethod.LETTERBOX,
@@ -1196,145 +1127,58 @@ class Display:
             if cached_path:
                 return cached_path
 
-        # Try Rust processing first if available (faster and supports more formats)
-        if hasattr(self, "_rust_processing_available") and self._rust_processing_available:
-            try:
-                # Get raw data from Rust processing
-                raw_data = self._convert_image_rust(
-                    image_path, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
-                )
+        # Use Rust processing (required)
+        # Get raw data from Rust processing
+        raw_data = self._convert_image_rust(
+            image_path, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
+        )
 
-                # Save to temporary PNG file
-                temp_fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="eink_auto_")
-                try:
-                    os.close(temp_fd)
-
-                    # Convert raw data to PIL Image for saving as PNG
-                    img_array = []
-                    for byte_idx in range(len(raw_data)):
-                        byte_val = raw_data[byte_idx]
-                        for bit_idx in range(8):
-                            bit = (byte_val >> (7 - bit_idx)) & 1
-                            img_array.append(255 if bit else 0)
-
-                    # Trim to exact size
-                    img_array = img_array[: display_width * display_height]
-
-                    # Create PIL image from array
-                    img = Image.new("L", (display_width, display_height))
-                    img.putdata(img_array)
-                    img = img.convert("1")
-                    img.save(temp_path, "PNG")
-
-                    # Store in cache
-                    if Display._cache_manager:
-                        Display._cache_manager.put(
-                            image_path,
-                            display_width,
-                            display_height,
-                            int(scaling),
-                            int(dithering),
-                            int(rotation),
-                            h_flip,
-                            v_flip,
-                            crop_x,
-                            crop_y,
-                            temp_path,
-                        )
-
-                    return temp_path
-
-                except Exception as e:
-                    try:
-                        os.unlink(temp_path)
-                    except OSError:
-                        pass  # Cleanup error is secondary to the main error
-                    raise DisplayError(f"Failed to save converted image: {e}")
-
-            except Exception as rust_error:
-                # Fall back to PIL processing
-                print(f"Rust processing failed, falling back to PIL: {rust_error}")
-
+        # Save to temporary PNG file
+        temp_fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="eink_auto_")
         try:
-            # Load and process the image
-            with Image.open(image_path) as img:
-                # Convert to RGB if needed (handles RGBA, palette, etc.)
-                if img.mode not in ("RGB", "L"):
-                    img = img.convert("RGB")
+            os.close(temp_fd)
 
-                # Apply transformations (h_flip, v_flip, rotation)
-                if h_flip:
-                    img = img.transpose(Image.FLIP_LEFT_RIGHT)
-                if v_flip:
-                    img = img.transpose(Image.FLIP_TOP_BOTTOM)
-                if rotation == RotationMode.ROTATE_90:
-                    img = img.transpose(Image.ROTATE_270)  # PIL ROTATE_270 = 90 CW
-                elif rotation == RotationMode.ROTATE_180:
-                    img = img.transpose(Image.ROTATE_180)
-                elif rotation == RotationMode.ROTATE_270:
-                    img = img.transpose(Image.ROTATE_90)  # PIL ROTATE_90 = 90 CCW
+            # Convert raw data to PIL Image for saving as PNG
+            img_array = []
+            for byte_idx in range(len(raw_data)):
+                byte_val = raw_data[byte_idx]
+                for bit_idx in range(8):
+                    bit = (byte_val >> (7 - bit_idx)) & 1
+                    img_array.append(255 if bit else 0)
 
-                # Scale the image based on method
-                processed_img = self._scale_image(
-                    img, display_width, display_height, scaling, crop_x, crop_y
+            # Trim to exact size
+            img_array = img_array[: display_width * display_height]
+
+            # Create PIL image from array
+            img = Image.new("L", (display_width, display_height))
+            img.putdata(img_array)
+            img = img.convert("1")
+            img.save(temp_path, "PNG")
+
+            # Store in cache
+            if Display._cache_manager:
+                Display._cache_manager.put(
+                    image_path,
+                    display_width,
+                    display_height,
+                    int(scaling),
+                    int(dithering),
+                    int(rotation),
+                    h_flip,
+                    v_flip,
+                    crop_x,
+                    crop_y,
+                    temp_path,
                 )
 
-                # Convert to 1-bit with dithering
-                if NATIVE_DITHERING_AVAILABLE and dithering != DitheringMethod.SIMPLE:
-                    # Use native dithering implementation for better quality
-                    try:
-                        dithered_array = dithering.dither_image(processed_img, int(dithering))
-                        bw_img = Image.fromarray(dithered_array, mode='L').convert('1')
-                    except Exception as e:
-                        logger.warning(f"Native dithering failed, falling back to PIL: {e}")
-                        # Fallback to PIL
-                        if dithering == DitheringMethod.FLOYD_STEINBERG:
-                            bw_img = processed_img.convert("1", dither=Image.FLOYDSTEINBERG)
-                        else:
-                            bw_img = processed_img.convert("1", dither=Image.NONE)
-                else:
-                    # Use PIL for legacy/simple methods
-                    if dithering in (DitheringMethod.FLOYD_STEINBERG, DitheringMethod.SIMPLE):
-                        if dithering == DitheringMethod.FLOYD_STEINBERG:
-                            bw_img = processed_img.convert("1", dither=Image.FLOYDSTEINBERG)
-                        else:
-                            bw_img = processed_img.convert("1", dither=Image.NONE)
-                    else:
-                        # For other methods, use threshold if native dithering unavailable
-                        bw_img = processed_img.convert("1", dither=Image.NONE)
-
-                # Save to temporary file
-                temp_fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="eink_auto_")
-                try:
-                    os.close(temp_fd)
-                    bw_img.save(temp_path, "PNG")
-
-                    # Store in cache
-                    if Display._cache_manager:
-                        Display._cache_manager.put(
-                            image_path,
-                            display_width,
-                            display_height,
-                            int(scaling),
-                            int(dithering),
-                            int(rotation),
-                            h_flip,
-                            v_flip,
-                            crop_x,
-                            crop_y,
-                            temp_path,
-                        )
-
-                    return temp_path
-                except Exception as e:
-                    try:
-                        os.unlink(temp_path)
-                    except OSError:
-                        pass  # Cleanup error is secondary to the main error
-                    raise DisplayError(f"Failed to save converted image: {e}")
+            return temp_path
 
         except Exception as e:
-            raise DisplayError(f"Failed to convert PNG: {e}")
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+            raise DisplayError(f"Failed to save converted image: {e}")
 
     def _scale_image(
         self,
@@ -1413,93 +1257,6 @@ class Display:
 
             return result
 
-    def display_png_auto(
-        self,
-        image_path: str,
-        mode: DisplayMode = DisplayMode.FULL,
-        scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-        dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-        rotation: RotationMode = RotationMode.NONE,
-        h_flip: bool = False,
-        v_flip: bool = False,
-        crop_x: int | None = None,
-        crop_y: int | None = None,
-        cleanup_temp: bool = True,
-    ) -> bool:
-        """
-        Display any image with automatic conversion to display specifications.
-        Supports multiple formats: PNG, JPEG, GIF, BMP, TIFF, WebP, ICO, PNM, TGA, DDS
-
-        Args:
-            image_path: Path to source image file (any supported format)
-            mode: Display refresh mode
-            scaling: How to scale the image to fit display
-            dithering: Dithering method for 1-bit conversion. Available methods:
-                - NONE: Simple threshold (fastest)
-                - FLOYD_STEINBERG: High quality error diffusion
-                - SIERRA: 3-row error diffusion (better than Floyd-Steinberg)
-                - SIERRA_2ROW: 2-row error diffusion (faster than Sierra)
-                - SIERRA_LITE: Minimal error diffusion (fast)
-                - SIMPLE: Legacy ordered dithering
-            rotation: Rotation mode (NONE, ROTATE_90, ROTATE_180, ROTATE_270)
-            h_flip: If True, flip image horizontally (left-right mirror)
-            v_flip: If True, flip image vertically (top-bottom mirror)
-            crop_x: X position for crop when using CROP_CENTER (None = center)
-            crop_y: Y position for crop when using CROP_CENTER (None = center)
-            cleanup_temp: Whether to cleanup temporary files
-
-        Returns:
-            True if successful, False otherwise
-
-        Raises:
-            DisplayError: If display operation fails
-        """
-        temp_path = None
-        try:
-            # Convert image to display format
-            temp_path = self._convert_png_auto(
-                image_path, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
-            )
-
-            # Display the converted image
-            self.display_image(temp_path, mode, rotation=RotationMode.NONE)
-            return True
-
-        except Exception as e:
-            raise DisplayError(f"Failed to auto-display image: {e}")
-
-        finally:
-            # Cleanup temporary file (only if not cached)
-            if cleanup_temp and temp_path and os.path.exists(temp_path):
-                # Don't delete if it's in cache
-                if (
-                    not Display._cache_manager
-                    or temp_path not in Display._cache_manager._temp_files.values()
-                ):
-                    try:
-                        os.unlink(temp_path)
-                    except OSError:
-                        pass  # Ignore cleanup errors
-
-    def display_image_auto(
-        self,
-        image_path: str,
-        mode: DisplayMode = DisplayMode.FULL,
-        scaling: ScalingMethod = ScalingMethod.LETTERBOX,
-        dithering: DitheringMethod = DitheringMethod.FLOYD_STEINBERG,
-        rotation: RotationMode = RotationMode.NONE,
-        h_flip: bool = False,
-        v_flip: bool = False,
-        crop_x: int | None = None,
-        crop_y: int | None = None,
-    ) -> bool:
-        """
-        Alias for display_png_auto that better reflects multi-format support.
-        """
-        return self.display_png_auto(
-            image_path, mode, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
-        )
-
     def capture_display(self, output_path: str | None = None) -> str:
         """
         Capture the current display content and save it as a PNG file.
@@ -1533,7 +1290,7 @@ class Display:
             total_bytes = bytes_per_row * height
 
             # Store the last displayed data if available
-            if hasattr(self, '_last_display_data'):
+            if hasattr(self, "_last_display_data"):
                 raw_data = self._last_display_data
             else:
                 # If no data stored, create a placeholder
@@ -1541,7 +1298,7 @@ class Display:
                 raw_data = bytes([0x00] * total_bytes)
 
             # Convert packed bits to image
-            img = Image.new('1', (width, height), 0)
+            img = Image.new("1", (width, height), 0)
             pixels = img.load()
 
             # Unpack bits from bytes
@@ -1554,7 +1311,7 @@ class Display:
                         pixels[x, y] = bit_value
 
             # Save as PNG
-            img.save(output_path, 'PNG')
+            img.save(output_path, "PNG")
             logger.info(f"Display captured to: {output_path}")
 
             return output_path
@@ -1564,7 +1321,7 @@ class Display:
 
 
 # Convenience functions for simple usage (following SDK pattern)
-def display_image_auto(
+def display_image(
     filename: str,
     mode: DisplayMode = DisplayMode.FULL,
     scaling: ScalingMethod = ScalingMethod.LETTERBOX,
@@ -1597,8 +1354,16 @@ def display_image_auto(
         crop_y: Y position for crop when using CROP_CENTER (None = center)
     """
     with Display() as display:
-        display.display_png_auto(
-            filename, mode, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
+        display.display_image(
+            filename,
+            mode,
+            scaling,
+            dithering,
+            rotation,
+            h_flip,
+            v_flip,
+            crop_x=crop_x,
+            crop_y=crop_y,
         )
 
 
@@ -1632,56 +1397,92 @@ def get_display_info() -> dict:
     }
 
 
-def rotate_bitpacked_ccw_90(src_data: bytes, src_width: int, src_height: int) -> bytes:
-    """
-    Rotate 1-bit packed bitmap data 90 degrees counter-clockwise.
+class TransformOperation(IntEnum):
+    """Bitpacked image transformation operations."""
 
-    This function converts landscape data (e.g., 250x128) to portrait data (e.g., 128x250)
-    for display on portrait-oriented e-ink screens.
+    ROTATE_90_CW = 1
+    ROTATE_90_CCW = 2
+    ROTATE_180 = 3
+    FLIP_H = 4
+    FLIP_V = 5
+    INVERT = 6
+
+
+def transform_bitpacked(
+    src_data: bytes, src_width: int, src_height: int, operation: TransformOperation
+) -> bytes:
+    """Apply transformation to 1-bit packed bitmap data.
 
     Args:
         src_data: Source 1-bit packed image data
-        src_width: Source image width in pixels
-        src_height: Source image height in pixels
+        src_width: Source width in pixels
+        src_height: Source height in pixels
+        operation: Transformation to apply
 
     Returns:
-        Rotated 1-bit packed data with dimensions (src_height x src_width)
+        Transformed 1-bit packed data
 
     Raises:
         ValueError: If data size doesn't match expected size
     """
-    # Validate input data size
+    # Validate input
     expected_bytes = (src_width * src_height + 7) // 8
     if len(src_data) < expected_bytes:
         raise ValueError(
             f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
         )
 
-    # Calculate destination dimensions and buffer size
-    dst_width = src_height
-    dst_height = src_width
-    dst_bytes = (dst_width * dst_height + 7) // 8
+    # Handle color inversion separately (simple operation)
+    if operation == TransformOperation.INVERT:
+        return bytes(~byte & 0xFF for byte in src_data)
 
-    # Initialize destination buffer (all zeros = white)
+    # Determine output dimensions
+    if operation in (TransformOperation.ROTATE_90_CW, TransformOperation.ROTATE_90_CCW):
+        dst_width = src_height
+        dst_height = src_width
+    else:
+        dst_width = src_width
+        dst_height = src_height
+
+    dst_bytes = (dst_width * dst_height + 7) // 8
     dst_data = bytearray(dst_bytes)
 
-    # For each pixel in source
+    # Process each pixel
     for src_y in range(src_height):
         for src_x in range(src_width):
-            # Get bit from source - MSB first
+            # Get source bit
             src_bit_idx = src_y * src_width + src_x
             src_byte_idx = src_bit_idx // 8
-            src_bit_pos = 7 - (src_bit_idx % 8)  # MSB first
+            src_bit_pos = 7 - (src_bit_idx % 8)
             src_bit = (src_data[src_byte_idx] >> src_bit_pos) & 1
 
-            # Calculate destination coordinates (counter-clockwise rotation)
-            dst_x = src_y
-            dst_y = src_width - 1 - src_x
+            # Calculate destination coordinates based on operation
+            if operation == TransformOperation.ROTATE_90_CW:
+                dst_x = src_height - 1 - src_y
+                dst_y = src_x
+            elif operation == TransformOperation.ROTATE_90_CCW:
+                dst_x = src_y
+                dst_y = src_width - 1 - src_x
+            elif operation == TransformOperation.ROTATE_180:
+                dst_x = src_width - 1 - src_x
+                dst_y = src_height - 1 - src_y
+            elif operation == TransformOperation.FLIP_H:
+                dst_x = src_width - 1 - src_x
+                dst_y = src_y
+            elif operation == TransformOperation.FLIP_V:
+                dst_x = src_x
+                dst_y = src_height - 1 - src_y
+            else:
+                raise ValueError(f"Unknown operation: {operation}")
 
-            # Set bit in destination - MSB first
-            dst_bit_idx = dst_y * dst_width + dst_x
+            # Set destination bit
+            if operation in (TransformOperation.ROTATE_90_CW, TransformOperation.ROTATE_90_CCW):
+                dst_bit_idx = dst_y * dst_width + dst_x
+            else:
+                dst_bit_idx = dst_y * src_width + dst_x
+
             dst_byte_idx = dst_bit_idx // 8
-            dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
+            dst_bit_pos = 7 - (dst_bit_idx % 8)
 
             if src_bit:
                 dst_data[dst_byte_idx] |= 1 << dst_bit_pos
@@ -1689,226 +1490,29 @@ def rotate_bitpacked_ccw_90(src_data: bytes, src_width: int, src_height: int) ->
     return bytes(dst_data)
 
 
+# Compatibility aliases for existing code
 def rotate_bitpacked_cw_90(src_data: bytes, src_width: int, src_height: int) -> bytes:
-    """
-    Rotate 1-bit packed bitmap data 90 degrees clockwise.
+    return transform_bitpacked(src_data, src_width, src_height, TransformOperation.ROTATE_90_CW)
 
-    Args:
-        src_data: Source 1-bit packed image data
-        src_width: Source image width in pixels
-        src_height: Source image height in pixels
 
-    Returns:
-        Rotated 1-bit packed data with dimensions (src_height x src_width)
-
-    Raises:
-        ValueError: If data size doesn't match expected size
-    """
-    # Validate input data size
-    expected_bytes = (src_width * src_height + 7) // 8
-    if len(src_data) < expected_bytes:
-        raise ValueError(
-            f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
-        )
-
-    # Calculate destination dimensions and buffer size
-    dst_width = src_height
-    dst_height = src_width
-    dst_bytes = (dst_width * dst_height + 7) // 8
-
-    # Initialize destination buffer (all zeros = white)
-    dst_data = bytearray(dst_bytes)
-
-    # For each pixel in source
-    for src_y in range(src_height):
-        for src_x in range(src_width):
-            # Get bit from source - MSB first
-            src_bit_idx = src_y * src_width + src_x
-            src_byte_idx = src_bit_idx // 8
-            src_bit_pos = 7 - (src_bit_idx % 8)  # MSB first
-            src_bit = (src_data[src_byte_idx] >> src_bit_pos) & 1
-
-            # Calculate destination coordinates (clockwise rotation)
-            dst_x = src_height - 1 - src_y
-            dst_y = src_x
-
-            # Set bit in destination - MSB first
-            dst_bit_idx = dst_y * dst_width + dst_x
-            dst_byte_idx = dst_bit_idx // 8
-            dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
-
-            if src_bit:
-                dst_data[dst_byte_idx] |= 1 << dst_bit_pos
-
-    return bytes(dst_data)
+def rotate_bitpacked_ccw_90(src_data: bytes, src_width: int, src_height: int) -> bytes:
+    return transform_bitpacked(src_data, src_width, src_height, TransformOperation.ROTATE_90_CCW)
 
 
 def rotate_bitpacked_180(src_data: bytes, src_width: int, src_height: int) -> bytes:
-    """
-    Rotate 1-bit packed bitmap data 180 degrees.
-
-    Args:
-        src_data: Source 1-bit packed image data
-        src_width: Source image width in pixels
-        src_height: Source image height in pixels
-
-    Returns:
-        Rotated 1-bit packed data with same dimensions
-
-    Raises:
-        ValueError: If data size doesn't match expected size
-    """
-    # Validate input data size
-    expected_bytes = (src_width * src_height + 7) // 8
-    if len(src_data) < expected_bytes:
-        raise ValueError(
-            f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
-        )
-
-    # Initialize destination buffer (same size as source)
-    dst_data = bytearray(expected_bytes)
-
-    # For each pixel in source
-    for src_y in range(src_height):
-        for src_x in range(src_width):
-            # Get bit from source - MSB first
-            src_bit_idx = src_y * src_width + src_x
-            src_byte_idx = src_bit_idx // 8
-            src_bit_pos = 7 - (src_bit_idx % 8)  # MSB first
-            src_bit = (src_data[src_byte_idx] >> src_bit_pos) & 1
-
-            # Calculate destination coordinates (180 degree rotation)
-            dst_x = src_width - 1 - src_x
-            dst_y = src_height - 1 - src_y
-
-            # Set bit in destination - MSB first
-            dst_bit_idx = dst_y * src_width + dst_x
-            dst_byte_idx = dst_bit_idx // 8
-            dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
-
-            if src_bit:
-                dst_data[dst_byte_idx] |= 1 << dst_bit_pos
-
-    return bytes(dst_data)
+    return transform_bitpacked(src_data, src_width, src_height, TransformOperation.ROTATE_180)
 
 
 def h_flip_bitpacked(src_data: bytes, src_width: int, src_height: int) -> bytes:
-    """
-    Flip 1-bit packed bitmap data horizontally (left-right mirror).
-
-    This function mirrors the image horizontally, which is useful for correcting
-    display orientation issues or mirrored content.
-
-    Args:
-        src_data: Source 1-bit packed image data
-        src_width: Source image width in pixels
-        src_height: Source image height in pixels
-
-    Returns:
-        Horizontally flipped 1-bit packed data with same dimensions
-
-    Raises:
-        ValueError: If data size doesn't match expected size
-    """
-    # Validate input data size
-    expected_bytes = (src_width * src_height + 7) // 8
-    if len(src_data) < expected_bytes:
-        raise ValueError(
-            f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
-        )
-
-    # Initialize destination buffer (same size as source)
-    dst_data = bytearray(expected_bytes)
-
-    # Flip horizontally: for each row, reverse the column order
-    for y in range(src_height):
-        for x in range(src_width):
-            # Get bit from source position
-            src_bit_idx = y * src_width + x
-            src_byte_idx = src_bit_idx // 8
-            src_bit_pos = 7 - (src_bit_idx % 8)  # MSB first
-            src_bit = (src_data[src_byte_idx] >> src_bit_pos) & 1
-
-            # Calculate flipped x position (mirror horizontally)
-            flipped_x = src_width - 1 - x
-
-            # Set bit in flipped position
-            dst_bit_idx = y * src_width + flipped_x
-            dst_byte_idx = dst_bit_idx // 8
-            dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
-
-            if src_bit:
-                dst_data[dst_byte_idx] |= 1 << dst_bit_pos
-
-    return bytes(dst_data)
+    return transform_bitpacked(src_data, src_width, src_height, TransformOperation.FLIP_H)
 
 
 def v_flip_bitpacked(src_data: bytes, src_width: int, src_height: int) -> bytes:
-    """
-    Flip 1-bit packed bitmap data vertically (top-bottom mirror).
-
-    This function mirrors the image vertically, which is useful for correcting
-    display orientation issues or inverted content.
-
-    Args:
-        src_data: Source 1-bit packed image data
-        src_width: Source image width in pixels
-        src_height: Source image height in pixels
-
-    Returns:
-        Vertically flipped 1-bit packed data with same dimensions
-
-    Raises:
-        ValueError: If data size doesn't match expected size
-    """
-    # Validate input data size
-    expected_bytes = (src_width * src_height + 7) // 8
-    if len(src_data) < expected_bytes:
-        raise ValueError(
-            f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
-        )
-
-    # Initialize destination buffer (same size as source)
-    dst_data = bytearray(expected_bytes)
-
-    # Flip vertically: for each column, reverse the row order
-    for y in range(src_height):
-        for x in range(src_width):
-            # Get bit from source position
-            src_bit_idx = y * src_width + x
-            src_byte_idx = src_bit_idx // 8
-            src_bit_pos = 7 - (src_bit_idx % 8)  # MSB first
-            src_bit = (src_data[src_byte_idx] >> src_bit_pos) & 1
-
-            # Calculate flipped y position (mirror vertically)
-            flipped_y = src_height - 1 - y
-
-            # Set bit in flipped position
-            dst_bit_idx = flipped_y * src_width + x
-            dst_byte_idx = dst_bit_idx // 8
-            dst_bit_pos = 7 - (dst_bit_idx % 8)  # MSB first
-
-            if src_bit:
-                dst_data[dst_byte_idx] |= 1 << dst_bit_pos
-
-    return bytes(dst_data)
+    return transform_bitpacked(src_data, src_width, src_height, TransformOperation.FLIP_V)
 
 
 def invert_bitpacked_colors(src_data: bytes) -> bytes:
-    """
-    Invert colors in 1-bit packed bitmap data (black↔white).
-
-    This function flips all bits to invert the colors, which is needed
-    for some e-ink displays that have inverted color interpretation.
-
-    Args:
-        src_data: Source 1-bit packed image data
-
-    Returns:
-        Color-inverted 1-bit packed data (same size as input)
-    """
-    # Invert all bits in the data (flip white<->black)
-    return bytes(~byte & 0xFF for byte in src_data)
+    return transform_bitpacked(src_data, 0, 0, TransformOperation.INVERT)
 
 
 # Configuration convenience functions

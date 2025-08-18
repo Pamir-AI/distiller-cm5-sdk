@@ -7,7 +7,7 @@ from .display import (
     RotationMode,
     ScalingMethod,
     clear_display,
-    display_image_auto,
+    display_image,
     get_default_firmware,
     get_display_info,
     initialize_display_config,
