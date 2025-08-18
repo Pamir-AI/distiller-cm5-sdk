@@ -632,7 +632,7 @@ class Display:
             # Update instance variables only, not class variables
             self.WIDTH = width_ptr.contents.value
             self.HEIGHT = height_ptr.contents.value
-            self.ARRAY_SIZE = (self.WIDTH * self.HEIGHT) // 8
+            self.ARRAY_SIZE = calculate_byte_aligned_size(self.WIDTH, self.HEIGHT)
 
             # Also update class variables if they were None
             if Display.WIDTH is None:
@@ -1490,6 +1490,25 @@ def clear_display() -> None:
         display.clear()
 
 
+def calculate_byte_aligned_size(width: int, height: int) -> int:
+    """
+    Calculate byte-aligned array size for display data.
+    
+    For non-byte-aligned widths like 122 pixels, each row must be
+    padded to the nearest byte boundary. 122 pixels = 15.25 bytes,
+    which needs 16 bytes per row.
+    
+    Args:
+        width: Display width in pixels
+        height: Display height in pixels
+        
+    Returns:
+        Total array size in bytes with proper row alignment
+    """
+    bytes_per_row = (width + 7) // 8
+    return bytes_per_row * height
+
+
 def get_display_info() -> dict:
     """
     Get display information.
@@ -1503,7 +1522,7 @@ def get_display_info() -> dict:
     # Create a temporary display instance to get actual dimensions
     with Display(auto_init=False) as display:
         width, height = display.get_dimensions()
-        array_size = (width * height) // 8
+        array_size = calculate_byte_aligned_size(width, height)
 
     return {
         "width": width,
@@ -1533,7 +1552,7 @@ def rotate_bitpacked_ccw_90(src_data: bytes, src_width: int, src_height: int) ->
         ValueError: If data size doesn't match expected size
     """
     # Validate input data size
-    expected_bytes = (src_width * src_height + 7) // 8
+    expected_bytes = calculate_byte_aligned_size(src_width, src_height)
     if len(src_data) < expected_bytes:
         raise ValueError(
             f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
@@ -1542,7 +1561,7 @@ def rotate_bitpacked_ccw_90(src_data: bytes, src_width: int, src_height: int) ->
     # Calculate destination dimensions and buffer size
     dst_width = src_height
     dst_height = src_width
-    dst_bytes = (dst_width * dst_height + 7) // 8
+    dst_bytes = calculate_byte_aligned_size(dst_width, dst_height)
 
     # Initialize destination buffer (all zeros = white)
     dst_data = bytearray(dst_bytes)
@@ -1587,7 +1606,7 @@ def rotate_bitpacked_cw_90(src_data: bytes, src_width: int, src_height: int) -> 
         ValueError: If data size doesn't match expected size
     """
     # Validate input data size
-    expected_bytes = (src_width * src_height + 7) // 8
+    expected_bytes = calculate_byte_aligned_size(src_width, src_height)
     if len(src_data) < expected_bytes:
         raise ValueError(
             f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
@@ -1596,7 +1615,7 @@ def rotate_bitpacked_cw_90(src_data: bytes, src_width: int, src_height: int) -> 
     # Calculate destination dimensions and buffer size
     dst_width = src_height
     dst_height = src_width
-    dst_bytes = (dst_width * dst_height + 7) // 8
+    dst_bytes = calculate_byte_aligned_size(dst_width, dst_height)
 
     # Initialize destination buffer (all zeros = white)
     dst_data = bytearray(dst_bytes)
@@ -1641,7 +1660,7 @@ def rotate_bitpacked_180(src_data: bytes, src_width: int, src_height: int) -> by
         ValueError: If data size doesn't match expected size
     """
     # Validate input data size
-    expected_bytes = (src_width * src_height + 7) // 8
+    expected_bytes = calculate_byte_aligned_size(src_width, src_height)
     if len(src_data) < expected_bytes:
         raise ValueError(
             f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
@@ -1693,7 +1712,7 @@ def h_flip_bitpacked(src_data: bytes, src_width: int, src_height: int) -> bytes:
         ValueError: If data size doesn't match expected size
     """
     # Validate input data size
-    expected_bytes = (src_width * src_height + 7) // 8
+    expected_bytes = calculate_byte_aligned_size(src_width, src_height)
     if len(src_data) < expected_bytes:
         raise ValueError(
             f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"
@@ -1744,7 +1763,7 @@ def v_flip_bitpacked(src_data: bytes, src_width: int, src_height: int) -> bytes:
         ValueError: If data size doesn't match expected size
     """
     # Validate input data size
-    expected_bytes = (src_width * src_height + 7) // 8
+    expected_bytes = calculate_byte_aligned_size(src_width, src_height)
     if len(src_data) < expected_bytes:
         raise ValueError(
             f"Input data too small. Expected {expected_bytes} bytes, got {len(src_data)}"

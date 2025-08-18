@@ -171,10 +171,11 @@ fn scale_image(
 }
 
 /// Bayer matrix for ordered dithering (4x4)
+/// Optimized for e-ink displays with better gradient representation
 const BAYER_MATRIX_4X4: [[u8; 4]; 4] =
     [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
 
-/// NEON-optimized ordered dithering for ARM64
+/// NEON-optimized ordered dithering for ARM64 with row-aware processing
 #[cfg(target_arch = "aarch64")]
 fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
     let width = img.width() as usize;
@@ -186,18 +187,20 @@ fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
     unsafe {
         for y in 0..height {
             let y_mod = y % 4;
+            let row_start = y * width;
             let mut x = 0;
 
-            // Process 16 pixels at a time with NEON
+            // Process 16 pixels at a time with NEON, but stay within row bounds
             while x + 16 <= width {
-                let ptr = in_data.as_ptr().add(y * width + x);
+                let ptr = in_data.as_ptr().add(row_start + x);
                 let pixels = vld1q_u8(ptr);
 
                 // Create threshold values based on Bayer matrix
+                // Use 15 as multiplier for better gradient representation
                 let mut thresholds = [0u8; 16];
                 for i in 0..16 {
                     let x_mod = (x + i) % 4;
-                    thresholds[i] = BAYER_MATRIX_4X4[y_mod][x_mod] * 16;
+                    thresholds[i] = BAYER_MATRIX_4X4[y_mod][x_mod] * 15;
                 }
 
                 // Load thresholds into NEON register
@@ -211,22 +214,22 @@ fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
                 let result = vbslq_u8(mask, vdupq_n_u8(255), vdupq_n_u8(0));
 
                 // Store result
-                let out_ptr = out_data.as_mut_ptr().add(y * width + x);
+                let out_ptr = out_data.as_mut_ptr().add(row_start + x);
                 vst1q_u8(out_ptr, result);
 
                 x += 16;
             }
 
-            // Handle remaining pixels
+            // Handle remaining pixels in the row
             while x < width {
-                let pixel = in_data[y * width + x];
-                let threshold = BAYER_MATRIX_4X4[y_mod][x % 4] * 16;
+                let pixel = in_data[row_start + x];
+                let threshold = BAYER_MATRIX_4X4[y_mod][x % 4] * 15;
                 let value = if pixel.saturating_add(threshold) > 128 {
                     255
                 } else {
                     0
                 };
-                out_data[y * width + x] = value;
+                out_data[row_start + x] = value;
                 x += 1;
             }
         }
@@ -243,7 +246,7 @@ fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
 
     ImageBuffer::from_fn(width, height, |x, y| {
         let pixel = img.get_pixel(x, y)[0];
-        let threshold = BAYER_MATRIX_4X4[(y % 4) as usize][(x % 4) as usize] * 16;
+        let threshold = BAYER_MATRIX_4X4[(y % 4) as usize][(x % 4) as usize] * 15;
         if pixel.saturating_add(threshold) > 128 {
             Luma([255u8])
         } else {
@@ -313,13 +316,19 @@ fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
                     // Extract pixels to array first
                     let pixel_array: [u8; 8] = std::mem::transmute(pixels);
                     for i in 0..8 {
+                        // Check we don't exceed row width (important for 122-pixel width)
+                        if x + i >= width {
+                            break;
+                        }
+                        
                         let pixel_idx = idx + i;
                         let old_pixel = pixel_array[i] as i32;
                         let new_pixel = if old_pixel > 115 { 255 } else { 0 };
                         // Clamp error to prevent excessive accumulation
                         let error = (old_pixel - new_pixel).clamp(-100, 100);
 
-                        // Distribute error to neighboring pixels
+                        // Distribute error to neighboring pixels (row-aware)
+                        // Only diffuse to right if within same row
                         if x + i + 1 < width {
                             let right_idx = pixel_idx + 1;
                             // Reduced error to right (6/16 instead of 7/16) for crisper edges
@@ -327,7 +336,9 @@ fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
                             data[right_idx] = new_val as u8;
                         }
 
+                        // Diffuse to next row
                         if y + 1 < height {
+                            // Bottom-left pixel
                             if x + i > 0 {
                                 let below_left_idx = (y + 1) * width + x + i - 1;
                                 // Reduced error to bottom-left (2/16 instead of 3/16)
@@ -336,10 +347,12 @@ fn floyd_steinberg_dither_neon(mut img: GrayImage) -> GrayImage {
                                 data[below_left_idx] = new_val as u8;
                             }
 
+                            // Bottom pixel
                             let below_idx = (y + 1) * width + x + i;
                             let new_val = (data[below_idx] as i32 + error * 5 / 16).clamp(0, 255);
                             data[below_idx] = new_val as u8;
 
+                            // Bottom-right pixel
                             if x + i + 1 < width {
                                 let below_right_idx = (y + 1) * width + x + i + 1;
                                 let new_val =

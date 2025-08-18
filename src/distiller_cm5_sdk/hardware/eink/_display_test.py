@@ -75,11 +75,13 @@ def create_horizontal_stripes(width: int, height: int, stripe_height: int = 8) -
 
 
 def create_gradient_pattern(width: int, height: int) -> Image.Image:
-    """Create a gradient pattern."""
+    """Create a gradient pattern optimized for display width."""
     img_array = np.zeros((height, width), dtype=np.uint8)
 
+    # Create smooth gradient from left to right
     for x in range(width):
-        gray_value = int(x * 255 / width)
+        # Smooth gradient across the actual display width
+        gray_value = int((x * 255) / (width - 1))
         img_array[:, x] = gray_value
 
     return Image.fromarray(img_array, mode="L")
@@ -87,34 +89,45 @@ def create_gradient_pattern(width: int, height: int) -> Image.Image:
 
 def create_white_image(width: int, height: int) -> bytes:
     """Create a white image (all bits set to 1)."""
-    array_size = (width * height) // 8
+    # Calculate byte-aligned array size
+    bytes_per_row = (width + 7) // 8
+    array_size = bytes_per_row * height
     return bytes([0xFF] * array_size)
 
 
 def create_black_image(width: int, height: int) -> bytes:
     """Create a black image (all bits set to 0)."""
-    array_size = (width * height) // 8
+    # Calculate byte-aligned array size
+    bytes_per_row = (width + 7) // 8
+    array_size = bytes_per_row * height
     return bytes([0x00] * array_size)
 
 
 def image_to_raw_data(img: Image.Image) -> bytes:
-    """Convert PIL Image to raw 1-bit packed data."""
+    """Convert PIL Image to raw 1-bit packed data with proper byte alignment."""
     # Convert to 1-bit
     img_1bit = img.convert("1", dither=Image.FLOYDSTEINBERG)
 
     # Get dimensions
     width, height = img_1bit.size
-    array_size = (width * height) // 8
+    
+    # Calculate bytes per row with alignment
+    bytes_per_row = (width + 7) // 8
+    array_size = bytes_per_row * height
 
-    # Pack bits into bytes (MSB first)
+    # Pack bits into bytes (MSB first) with row-aware padding
     raw_data = bytearray(array_size)
     pixels = list(img_1bit.getdata())
 
-    for i, pixel in enumerate(pixels):
-        byte_idx = i // 8
-        bit_pos = 7 - (i % 8)  # MSB first
-        if pixel:  # White pixel
-            raw_data[byte_idx] |= 1 << bit_pos
+    # Process row by row for proper alignment
+    for y in range(height):
+        for x in range(width):
+            pixel_idx = y * width + x
+            if pixel_idx < len(pixels) and pixels[pixel_idx]:
+                # Calculate byte position with row alignment
+                byte_idx = y * bytes_per_row + (x // 8)
+                bit_pos = 7 - (x % 8)  # MSB first
+                raw_data[byte_idx] |= 1 << bit_pos
 
     return bytes(raw_data)
 
@@ -204,7 +217,7 @@ def main():
             width, height = 240, 416
         else:
             width, height = 122, 250
-        array_size = (width * height) // 8
+        array_size = ((width + 7) // 8) * height
         print(f"Using {firmware_env} dimensions: {width}x{height} pixels")
         print(f"Required data size: {array_size} bytes")
 
@@ -244,7 +257,7 @@ def main():
         if actual_width != width or actual_height != height:
             width = actual_width
             height = actual_height
-            array_size = (width * height) // 8
+            array_size = ((width + 7) // 8) * height
             print(f"Updated dimensions: {width}x{height}, data size: {array_size} bytes")
             # Recreate test images with correct size
             white_image = create_white_image(width, height)
