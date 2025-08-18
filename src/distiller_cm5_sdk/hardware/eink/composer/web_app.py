@@ -180,6 +180,8 @@ async def add_image(
     y: int = 0,
     resize_mode: str = "fit",
     dither_mode: str = "floyd-steinberg",
+    width: int = None,  # Accept width parameter
+    height: int = None,  # Accept height parameter
     composer: EinkComposer = Depends(get_composition),
 ):
     if not file.filename:
@@ -193,14 +195,23 @@ async def add_image(
 
         layer_id = f"image_{len(composer.layers)}"
 
-        composer.add_image_layer(
-            layer_id=layer_id,
-            image_path=tmp_path,
-            x=x,
-            y=y,
-            resize_mode=resize_mode,
-            dither_mode=dither_mode,
-        )
+        # Pass width/height if provided (they'll be handled by add_image_layer)
+        kwargs = {
+            "layer_id": layer_id,
+            "image_path": tmp_path,
+            "x": x,
+            "y": y,
+            "resize_mode": resize_mode,
+            "dither_mode": dither_mode,
+        }
+        
+        # Only add width/height if they were provided
+        if width is not None:
+            kwargs["width"] = width
+        if height is not None:
+            kwargs["height"] = height
+
+        composer.add_image_layer(**kwargs)
 
         return OperationResponse(success=True, layer_id=layer_id)
     except Exception as e:
@@ -215,8 +226,32 @@ async def remove_layer(layer_id: str, composer: EinkComposer = Depends(get_compo
     return OperationResponse(success=True)
 
 
+@app.post("/api/remove-layer", response_model=OperationResponse)
+async def remove_layer_post(
+    layer_id: str,
+    composer: EinkComposer = Depends(get_composition)
+):
+    """Remove layer - compatibility endpoint for frontend using POST."""
+    success = composer.remove_layer(layer_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Layer not found")
+    return OperationResponse(success=True)
+
+
 @app.post("/api/layer/{layer_id}/toggle", response_model=OperationResponse)
 async def toggle_layer(layer_id: str, composer: EinkComposer = Depends(get_composition)):
+    success = composer.toggle_layer(layer_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Layer not found")
+    return OperationResponse(success=True)
+
+
+@app.post("/api/toggle-layer", response_model=OperationResponse)
+async def toggle_layer_post(
+    layer_id: str,
+    composer: EinkComposer = Depends(get_composition)
+):
+    """Toggle layer visibility - compatibility endpoint for frontend."""
     success = composer.toggle_layer(layer_id)
     if not success:
         raise HTTPException(status_code=404, detail="Layer not found")
@@ -229,6 +264,20 @@ async def update_layer(
 ):
     update_dict = request.dict(exclude_unset=True)
     success = composer.update_layer(layer_id, **update_dict)
+    if not success:
+        raise HTTPException(status_code=404, detail="Layer not found")
+    return OperationResponse(success=True)
+
+
+@app.post("/api/update-layer-position", response_model=OperationResponse)
+async def update_layer_position(
+    layer_id: str,
+    x: int,
+    y: int,
+    composer: EinkComposer = Depends(get_composition)
+):
+    """Update layer position - compatibility endpoint for frontend."""
+    success = composer.update_layer(layer_id, x=x, y=y)
     if not success:
         raise HTTPException(status_code=404, detail="Layer not found")
     return OperationResponse(success=True)
@@ -294,8 +343,57 @@ async def add_placeholder(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/add-ip-placeholder", response_model=OperationResponse)
+async def add_ip_placeholder(
+    x: int = 125,
+    y: int = 64,
+    font_size: int = 1,
+    color: int = 0,
+    background: bool = True,
+    rotation: int = 0,
+    flip_h: bool = False,
+    composer: EinkComposer = Depends(get_composition)
+):
+    """Add IP address placeholder - compatibility endpoint for frontend."""
+    request = PlaceholderRequest(
+        placeholder_type="ip",
+        x=x,
+        y=y,
+        font_size=font_size,
+        color=color,
+        background=background
+    )
+    return await add_placeholder(request, composer)
+
+
+@app.post("/api/add-qr-placeholder", response_model=OperationResponse)
+async def add_qr_placeholder(
+    x: int = 125,
+    y: int = 64,
+    width: int = 70,
+    height: int = 70,
+    composer: EinkComposer = Depends(get_composition)
+):
+    """Add QR code placeholder - compatibility endpoint for frontend."""
+    request = PlaceholderRequest(
+        placeholder_type="qr",
+        x=x,
+        y=y,
+        width=width,
+        height=height
+    )
+    return await add_placeholder(request, composer)
+
+
 @app.delete("/api/clear", response_model=OperationResponse)
 async def clear_all(composer: EinkComposer = Depends(get_composition)):
+    composer.layers.clear()
+    return OperationResponse(success=True)
+
+
+@app.get("/api/clear", response_model=OperationResponse)
+async def clear_all_get(composer: EinkComposer = Depends(get_composition)):
+    """GET method support for /api/clear - compatibility with frontend."""
     composer.layers.clear()
     return OperationResponse(success=True)
 
