@@ -369,11 +369,62 @@ def main():
                 os.unlink(temp_path)
         time.sleep(3)
 
+        # Test 8: Comprehensive dithering method comparison
+        print("\n--- Test 8: Comprehensive Dithering Method Comparison ---")
+        print("Testing all available dithering methods with gradient pattern...")
+
+        # List all dithering methods with descriptions
+        dithering_methods = [
+            (DitheringMethod.NONE, "NONE", "Simple threshold (fastest)"),
+            (DitheringMethod.FLOYD_STEINBERG, "FLOYD_STEINBERG", "High quality error diffusion"),
+            (DitheringMethod.SIERRA, "SIERRA", "3-row error diffusion (best quality)"),
+            (DitheringMethod.SIERRA_2ROW, "SIERRA_2ROW", "2-row error diffusion (good balance)"),
+            (DitheringMethod.SIERRA_LITE, "SIERRA_LITE", "Minimal error diffusion (fast)"),
+            (DitheringMethod.SIMPLE, "SIMPLE", "Legacy ordered dithering"),
+        ]
+
+        # Test each dithering method
+        for method_enum, method_name, description in dithering_methods:
+            print(f"\n  Testing {method_name}: {description}")
+            temp_path = save_temp_image(gradient, f"gradient_{method_name.lower()}")
+
+            try:
+                start_time = time.time()
+                display.display_image_auto(
+                    temp_path,
+                    mode=DisplayMode.FULL,
+                    scaling=ScalingMethod.STRETCH,
+                    dithering=method_enum,
+                )
+                end_time = time.time()
+
+                process_time = end_time - start_time
+                print(f"  ✓ {method_name} displayed successfully (processed in {process_time:.3f}s)")
+
+                # Capture the result for comparison if capture is available
+                try:
+                    capture_path = display.capture_display(f"/tmp/dithering_comparison_{method_name.lower()}.png")
+                    print(f"  ✓ Result captured to: {capture_path}")
+                except Exception:
+                    pass  # Capture may not be available, continue with test
+
+            except Exception as e:
+                print(f"  ✗ Error with {method_name}: {e}")
+            finally:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+
+            # Pause between each method for visual comparison
+            time.sleep(4)
+
+        print("\nDithering comparison completed!")
+        print("Check /tmp/dithering_comparison_*.png files (if capture worked) to compare results")
+
         # Test with a real image file if provided as argument
         if len(sys.argv) > 1:
             image_path = sys.argv[1]
             if os.path.exists(image_path):
-                print(f"\n--- Test 8: Loading image from file: {image_path} ---")
+                print(f"\n--- Test 9: Loading image from file: {image_path} ---")
 
                 # Test with Floyd-Steinberg, rotated and flipped
                 print("Processing options:")
@@ -396,7 +447,7 @@ def main():
                     time.sleep(5)
 
                     # Also test with Simple dithering for comparison
-                    print("\n--- Test 9: Same image with Simple (ordered) dithering ---")
+                    print("\n--- Test 10: Same image with Simple (ordered) dithering ---")
                     print("Processing with Simple dithering...")
                     print("  Dithering: Simple")
 
@@ -420,7 +471,7 @@ def main():
             print(f"  python {sys.argv[0]} /path/to/image.png")
 
         # Test capture functionality
-        print("\n--- Test 10: Capture display content ---")
+        print("\n--- Test 11: Capture display content ---")
         print("Capturing current display content to PNG...")
         try:
             capture_path = display.capture_display()

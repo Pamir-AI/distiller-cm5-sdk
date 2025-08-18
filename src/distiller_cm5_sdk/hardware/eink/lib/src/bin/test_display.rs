@@ -269,12 +269,67 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             std::thread::sleep(std::time::Duration::from_secs(3));
 
+            // Test 8: Comprehensive dithering method comparison
+            println!("\n--- Test 8: Comprehensive Dithering Method Comparison ---");
+            println!("Testing all available dithering methods with gradient pattern...");
+
+            // List all dithering methods with descriptions
+            let dithering_methods = vec![
+                (DitheringMethod::None, "NONE", "Simple threshold (fastest)"),
+                (DitheringMethod::FloydSteinberg, "FLOYD_STEINBERG", "High quality error diffusion"),
+                (DitheringMethod::Sierra, "SIERRA", "3-row error diffusion (best quality)"),
+                (DitheringMethod::Sierra2Row, "SIERRA_2ROW", "2-row error diffusion (good balance)"),
+                (DitheringMethod::SierraLite, "SIERRA_LITE", "Minimal error diffusion (fast)"),
+                (DitheringMethod::Simple, "SIMPLE", "Legacy ordered dithering"),
+            ];
+
+            // Create a fresh gradient for comparison
+            let gradient_test = create_gradient_pattern(spec.width, spec.height);
+
+            // Test each dithering method
+            for (method_enum, method_name, description) in dithering_methods {
+                println!("\n  Testing {}: {}", method_name, description);
+
+                let mut test_options = ProcessingOptions::default();
+                test_options.dithering = method_enum;
+                test_options.scaling = ScalingMethod::Stretch;
+
+                let start_time = std::time::Instant::now();
+                match process_image_for_display(gradient_test.clone(), &spec, &test_options) {
+                    Ok(dithered_data) => {
+                        let process_time = start_time.elapsed();
+                        println!("  Gradient data size: {} bytes", dithered_data.len());
+                        println!("  Dithering method: {:?}", test_options.dithering);
+                        println!("  Processing time: {:.3}s", process_time.as_secs_f64());
+                        hexdump(&dithered_data, 128);
+
+                        println!("  Displaying gradient with {}...", method_name);
+                        match display_image_raw(&dithered_data, DisplayMode::Full) {
+                            Ok(()) => {
+                                println!("  ✓ {} displayed successfully", method_name);
+                            }
+                            Err(e) => {
+                                println!("  ✗ Error displaying {}: {}", method_name, e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("  ✗ Error processing with {}: {}", method_name, e);
+                    }
+                }
+
+                // Pause between each method for visual comparison
+                std::thread::sleep(std::time::Duration::from_secs(4));
+            }
+
+            println!("\nDithering comparison completed!");
+
             // Test with a real image file if provided as argument
             let args: Vec<String> = env::args().collect();
             if args.len() > 1 {
                 let image_path = &args[1];
                 if Path::new(image_path).exists() {
-                    println!("\n--- Test 8: Loading image from file: {} ---", image_path);
+                    println!("\n--- Test 9: Loading image from file: {} ---", image_path);
 
                     // Test with Floyd-Steinberg, rotated and flipped
                     let mut file_options = ProcessingOptions::default();
@@ -304,7 +359,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                             // Also test with Simple (ordered) dithering for comparison
                             println!(
-                                "\n--- Test 9: Same image with Simple (ordered) dithering ---"
+                                "\n--- Test 10: Same image with Simple (ordered) dithering ---"
                             );
                             file_options.dithering = DitheringMethod::Simple;
 
@@ -417,5 +472,131 @@ mod tests {
         // Should be one of the supported resolutions
         let supported = [(128, 250), (240, 416)];
         assert!(supported.contains(&dims));
+    }
+
+    #[test]
+    fn test_all_dithering_methods() {
+        use crate::image_processing::{DitheringMethod, ProcessingOptions, ScalingMethod, process_image_for_display};
+        use crate::config;
+
+        // Get display spec
+        let spec = config::get_default_spec().expect("Failed to get display spec");
+        
+        // Create a test gradient image
+        let test_image = create_gradient_pattern(spec.width, spec.height);
+        
+        // Test all dithering methods
+        let methods = vec![
+            DitheringMethod::None,
+            DitheringMethod::FloydSteinberg,
+            DitheringMethod::Sierra,
+            DitheringMethod::Sierra2Row,
+            DitheringMethod::SierraLite,
+            DitheringMethod::Simple,
+        ];
+        
+        for method in methods {
+            let mut options = ProcessingOptions::default();
+            options.dithering = method;
+            options.scaling = ScalingMethod::Stretch;
+            
+            let result = process_image_for_display(test_image.clone(), &spec, &options);
+            assert!(result.is_ok(), "Dithering method {:?} failed", method);
+            
+            let data = result.unwrap();
+            let expected_size = (spec.width * spec.height / 8) as usize;
+            assert_eq!(data.len(), expected_size, "Output size mismatch for {:?}", method);
+            
+            // Verify data is not all zeros or all ones (except for threshold method on uniform input)
+            if method != DitheringMethod::None {
+                let all_zeros = data.iter().all(|&b| b == 0x00);
+                let all_ones = data.iter().all(|&b| b == 0xFF);
+                assert!(!(all_zeros || all_ones), "Dithering method {:?} produced uniform output", method);
+            }
+        }
+    }
+
+    #[test]
+    fn test_dithering_performance() {
+        use crate::image_processing::{DitheringMethod, ProcessingOptions, ScalingMethod, process_image_for_display};
+        use crate::config;
+        use std::time::Instant;
+
+        // Get display spec
+        let spec = config::get_default_spec().expect("Failed to get display spec");
+        
+        // Create a test gradient image
+        let test_image = create_gradient_pattern(spec.width, spec.height);
+        
+        // Test performance of different methods
+        let methods = vec![
+            (DitheringMethod::None, "None"),
+            (DitheringMethod::SierraLite, "Sierra Lite"),
+            (DitheringMethod::Simple, "Simple"),
+            (DitheringMethod::Sierra2Row, "Sierra 2-Row"),
+            (DitheringMethod::FloydSteinberg, "Floyd-Steinberg"),
+            (DitheringMethod::Sierra, "Sierra"),
+        ];
+        
+        for (method, name) in methods {
+            let mut options = ProcessingOptions::default();
+            options.dithering = method;
+            options.scaling = ScalingMethod::Stretch;
+            
+            let start = Instant::now();
+            let result = process_image_for_display(test_image.clone(), &spec, &options);
+            let duration = start.elapsed();
+            
+            assert!(result.is_ok(), "Dithering method {} failed", name);
+            println!("{} dithering took: {:.3}ms", name, duration.as_millis());
+            
+            // Performance expectations (rough guidelines)
+            match method {
+                DitheringMethod::None => assert!(duration.as_millis() < 50, "None dithering too slow"),
+                DitheringMethod::Simple => assert!(duration.as_millis() < 100, "Simple dithering too slow"),
+                DitheringMethod::SierraLite => assert!(duration.as_millis() < 200, "Sierra Lite too slow"),
+                _ => {} // Other methods may be slower, no strict limit
+            }
+        }
+    }
+
+    #[test]
+    fn test_dithering_output_consistency() {
+        use crate::image_processing::{DitheringMethod, ProcessingOptions, ScalingMethod, process_image_for_display};
+        use crate::config;
+
+        // Get display spec
+        let spec = config::get_default_spec().expect("Failed to get display spec");
+        
+        // Create a simple black and white test pattern
+        let test_image = create_checkerboard_pattern(spec.width, spec.height, 8);
+        
+        // Test that each method produces consistent output
+        let methods = vec![
+            DitheringMethod::None,
+            DitheringMethod::FloydSteinberg,
+            DitheringMethod::Sierra,
+            DitheringMethod::Sierra2Row,
+            DitheringMethod::SierraLite,
+            DitheringMethod::Simple,
+        ];
+        
+        for method in methods {
+            let mut options = ProcessingOptions::default();
+            options.dithering = method;
+            options.scaling = ScalingMethod::Stretch;
+            
+            // Run the same dithering twice
+            let result1 = process_image_for_display(test_image.clone(), &spec, &options);
+            let result2 = process_image_for_display(test_image.clone(), &spec, &options);
+            
+            assert!(result1.is_ok() && result2.is_ok(), "Dithering method {:?} failed", method);
+            
+            let data1 = result1.unwrap();
+            let data2 = result2.unwrap();
+            
+            // Results should be identical for deterministic algorithms
+            assert_eq!(data1, data2, "Dithering method {:?} is not deterministic", method);
+        }
     }
 }

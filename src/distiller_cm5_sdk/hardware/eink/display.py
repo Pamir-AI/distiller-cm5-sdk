@@ -7,6 +7,7 @@ Provides functionality for e-ink display control and image display.
 import ctypes
 import hashlib
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -16,8 +17,16 @@ from enum import Enum, IntEnum
 from typing import Any
 
 from PIL import Image
-import logging
+
 logger = logging.getLogger(__name__)
+
+# Import native dithering module
+try:
+    from . import dithering
+    NATIVE_DITHERING_AVAILABLE = True
+except ImportError:
+    NATIVE_DITHERING_AVAILABLE = False
+    logger.warning("Native dithering module not available, falling back to PIL")
 
 
 class DisplayError(Exception):
@@ -51,8 +60,12 @@ class ScalingMethod(IntEnum):
 class DitheringMethod(IntEnum):
     """Dithering methods for 1-bit conversion."""
 
-    FLOYD_STEINBERG = 0  # High quality dithering
-    SIMPLE = 1  # Fast threshold conversion
+    NONE = 0  # No dithering, simple threshold
+    FLOYD_STEINBERG = 1  # High quality dithering
+    SIERRA = 2  # Sierra dithering (3-row error diffusion)
+    SIERRA_2ROW = 3  # Sierra 2-row dithering (faster)
+    SIERRA_LITE = 4  # Sierra Lite dithering (fastest)
+    SIMPLE = 5  # Fast threshold conversion (legacy)
 
 
 class RotationMode(IntEnum):
@@ -821,7 +834,7 @@ class Display:
             except Exception:
                 # If conversion fails, still try to display
                 pass
-            
+
             filename_bytes = filename.encode("utf-8")
             success = self._lib.display_image_png(filename_bytes, int(mode))
             if not success:
@@ -1267,10 +1280,28 @@ class Display:
                 )
 
                 # Convert to 1-bit with dithering
-                if dithering == DitheringMethod.FLOYD_STEINBERG:
-                    bw_img = processed_img.convert("1", dither=Image.FLOYDSTEINBERG)
+                if NATIVE_DITHERING_AVAILABLE and dithering != DitheringMethod.SIMPLE:
+                    # Use native dithering implementation for better quality
+                    try:
+                        dithered_array = dithering.dither_image(processed_img, int(dithering))
+                        bw_img = Image.fromarray(dithered_array, mode='L').convert('1')
+                    except Exception as e:
+                        logger.warning(f"Native dithering failed, falling back to PIL: {e}")
+                        # Fallback to PIL
+                        if dithering == DitheringMethod.FLOYD_STEINBERG:
+                            bw_img = processed_img.convert("1", dither=Image.FLOYDSTEINBERG)
+                        else:
+                            bw_img = processed_img.convert("1", dither=Image.NONE)
                 else:
-                    bw_img = processed_img.convert("1", dither=Image.NONE)
+                    # Use PIL for legacy/simple methods
+                    if dithering in (DitheringMethod.FLOYD_STEINBERG, DitheringMethod.SIMPLE):
+                        if dithering == DitheringMethod.FLOYD_STEINBERG:
+                            bw_img = processed_img.convert("1", dither=Image.FLOYDSTEINBERG)
+                        else:
+                            bw_img = processed_img.convert("1", dither=Image.NONE)
+                    else:
+                        # For other methods, use threshold if native dithering unavailable
+                        bw_img = processed_img.convert("1", dither=Image.NONE)
 
                 # Save to temporary file
                 temp_fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="eink_auto_")
@@ -1403,7 +1434,13 @@ class Display:
             image_path: Path to source image file (any supported format)
             mode: Display refresh mode
             scaling: How to scale the image to fit display
-            dithering: Dithering method for 1-bit conversion
+            dithering: Dithering method for 1-bit conversion. Available methods:
+                - NONE: Simple threshold (fastest)
+                - FLOYD_STEINBERG: High quality error diffusion
+                - SIERRA: 3-row error diffusion (better than Floyd-Steinberg)
+                - SIERRA_2ROW: 2-row error diffusion (faster than Sierra)
+                - SIERRA_LITE: Minimal error diffusion (fast)
+                - SIMPLE: Legacy ordered dithering
             rotation: Rotation mode (NONE, ROTATE_90, ROTATE_180, ROTATE_270)
             h_flip: If True, flip image horizontally (left-right mirror)
             v_flip: If True, flip image vertically (top-bottom mirror)
@@ -1466,34 +1503,35 @@ class Display:
     def capture_display(self, output_path: str | None = None) -> str:
         """
         Capture the current display content and save it as a PNG file.
-        
+
         This method saves whatever is currently shown on the e-ink display
         to a PNG file for debugging, sharing, or documentation purposes.
-        
+
         Args:
             output_path: Path where to save the PNG. If None, saves to
                         /tmp/eink_capture_YYYYMMDD_HHMMSS.png
-        
+
         Returns:
             Path to the saved PNG file
-            
+
         Raises:
             DisplayError: If capture fails
         """
         import datetime
+
         from PIL import Image
-        
+
         # Generate default filename if not provided
         if output_path is None:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = f"/tmp/eink_capture_{timestamp}.png"
-        
+
         try:
             # Get display dimensions
             width, height = self.get_dimensions()
             bytes_per_row = (width + 7) // 8
             total_bytes = bytes_per_row * height
-            
+
             # Store the last displayed data if available
             if hasattr(self, '_last_display_data'):
                 raw_data = self._last_display_data
@@ -1501,11 +1539,11 @@ class Display:
                 # If no data stored, create a placeholder
                 logger.warning("No display data captured yet. Creating blank image.")
                 raw_data = bytes([0x00] * total_bytes)
-            
+
             # Convert packed bits to image
             img = Image.new('1', (width, height), 0)
             pixels = img.load()
-            
+
             # Unpack bits from bytes
             for y in range(height):
                 for x in range(width):
@@ -1514,13 +1552,13 @@ class Display:
                     if byte_idx < len(raw_data):
                         bit_value = (raw_data[byte_idx] >> bit_pos) & 1
                         pixels[x, y] = bit_value
-            
+
             # Save as PNG
             img.save(output_path, 'PNG')
             logger.info(f"Display captured to: {output_path}")
-            
+
             return output_path
-            
+
         except Exception as e:
             raise DisplayError(f"Failed to capture display: {e}")
 
@@ -1545,7 +1583,13 @@ def display_image_auto(
         filename: Path to image file (any supported format)
         mode: Display refresh mode
         scaling: How to scale the image to fit display
-        dithering: Dithering method for 1-bit conversion
+        dithering: Dithering method for 1-bit conversion. Available methods:
+            - NONE: Simple threshold (fastest)
+            - FLOYD_STEINBERG: High quality error diffusion
+            - SIERRA: 3-row error diffusion (better than Floyd-Steinberg)
+            - SIERRA_2ROW: 2-row error diffusion (faster than Sierra)
+            - SIERRA_LITE: Minimal error diffusion (fast)
+            - SIMPLE: Legacy ordered dithering
         rotation: Rotation mode (NONE, ROTATE_90, ROTATE_180, ROTATE_270)
         h_flip: If True, flip image horizontally (left-right mirror)
         v_flip: If True, flip image vertically (top-bottom mirror)

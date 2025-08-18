@@ -20,8 +20,12 @@ pub enum ScalingMethod {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DitheringMethod {
-    FloydSteinberg = 0, // High quality dithering
-    Simple = 1,         // Fast ordered dithering
+    None = 0,           // No dithering, simple threshold
+    FloydSteinberg = 1, // High quality dithering
+    Sierra = 2,         // Sierra dithering (3-row error diffusion)
+    Sierra2Row = 3,     // Sierra 2-row dithering (faster)
+    SierraLite = 4,     // Sierra Lite dithering (fastest)
+    Simple = 5,         // Fast ordered dithering (legacy)
 }
 
 /// Rotation modes for image transformation
@@ -250,15 +254,214 @@ fn ordered_dither_neon(img: &GrayImage) -> GrayImage {
     })
 }
 
+/// Simple threshold dithering (no error diffusion)
+fn threshold_dither(img: &GrayImage, threshold: u8) -> GrayImage {
+    let width = img.width();
+    let height = img.height();
+
+    ImageBuffer::from_fn(width, height, |x, y| {
+        let pixel = img.get_pixel(x, y)[0];
+        if pixel >= threshold {
+            Luma([255u8])
+        } else {
+            Luma([0u8])
+        }
+    })
+}
+
+/// Sierra dithering algorithm (3-row error diffusion)
+/// Error distribution: divisor = 32
+fn sierra_dither(mut img: GrayImage) -> GrayImage {
+    let width = img.width() as usize;
+    let height = img.height() as usize;
+    let data = img.as_mut();
+
+    for y in 0..height {
+        for x in 0..width {
+            let idx = y * width + x;
+            let old_pixel = data[idx] as i32;
+            let new_pixel = if old_pixel >= 127 { 255 } else { 0 };
+            data[idx] = new_pixel as u8;
+
+            let q_err = old_pixel - new_pixel;
+
+            // Row 0 (current row) - distribute to right
+            if x + 1 < width {
+                let new_val = (data[idx + 1] as i32 + (q_err * 5) >> 5).clamp(0, 255);
+                data[idx + 1] = new_val as u8;
+            }
+            if x + 2 < width {
+                let new_val = (data[idx + 2] as i32 + (q_err * 3) >> 5).clamp(0, 255);
+                data[idx + 2] = new_val as u8;
+            }
+
+            // Row 1 (next row)
+            if y + 1 < height {
+                let row1_idx = (y + 1) * width + x;
+                
+                if x >= 2 {
+                    let new_val = (data[row1_idx - 2] as i32 + (q_err * 2) >> 5).clamp(0, 255);
+                    data[row1_idx - 2] = new_val as u8;
+                }
+                if x >= 1 {
+                    let new_val = (data[row1_idx - 1] as i32 + (q_err * 4) >> 5).clamp(0, 255);
+                    data[row1_idx - 1] = new_val as u8;
+                }
+                let new_val = (data[row1_idx] as i32 + (q_err * 5) >> 5).clamp(0, 255);
+                data[row1_idx] = new_val as u8;
+                
+                if x + 1 < width {
+                    let new_val = (data[row1_idx + 1] as i32 + (q_err * 4) >> 5).clamp(0, 255);
+                    data[row1_idx + 1] = new_val as u8;
+                }
+                if x + 2 < width {
+                    let new_val = (data[row1_idx + 2] as i32 + (q_err * 2) >> 5).clamp(0, 255);
+                    data[row1_idx + 2] = new_val as u8;
+                }
+            }
+
+            // Row 2 (second next row)
+            if y + 2 < height {
+                let row2_idx = (y + 2) * width + x;
+                
+                if x >= 1 {
+                    let new_val = (data[row2_idx - 1] as i32 + (q_err * 2) >> 5).clamp(0, 255);
+                    data[row2_idx - 1] = new_val as u8;
+                }
+                let new_val = (data[row2_idx] as i32 + (q_err * 3) >> 5).clamp(0, 255);
+                data[row2_idx] = new_val as u8;
+                
+                if x + 1 < width {
+                    let new_val = (data[row2_idx + 1] as i32 + (q_err * 2) >> 5).clamp(0, 255);
+                    data[row2_idx + 1] = new_val as u8;
+                }
+            }
+        }
+    }
+
+    img
+}
+
+/// Sierra 2-row dithering algorithm (faster than full Sierra)
+/// Error distribution: divisor = 16
+fn sierra_2row_dither(mut img: GrayImage) -> GrayImage {
+    let width = img.width() as usize;
+    let height = img.height() as usize;
+    let data = img.as_mut();
+
+    for y in 0..height {
+        for x in 0..width {
+            let idx = y * width + x;
+            let old_pixel = data[idx] as i32;
+            let new_pixel = if old_pixel >= 127 { 255 } else { 0 };
+            data[idx] = new_pixel as u8;
+
+            let q_err = old_pixel - new_pixel;
+
+            // Row 0 (current row)
+            if x + 1 < width {
+                let new_val = (data[idx + 1] as i32 + (q_err * 4) >> 4).clamp(0, 255);
+                data[idx + 1] = new_val as u8;
+            }
+            if x + 2 < width {
+                let new_val = (data[idx + 2] as i32 + (q_err * 3) >> 4).clamp(0, 255);
+                data[idx + 2] = new_val as u8;
+            }
+
+            // Row 1 (next row)
+            if y + 1 < height {
+                let row1_idx = (y + 1) * width + x;
+                
+                if x >= 2 {
+                    let new_val = (data[row1_idx - 2] as i32 + (q_err * 1) >> 4).clamp(0, 255);
+                    data[row1_idx - 2] = new_val as u8;
+                }
+                if x >= 1 {
+                    let new_val = (data[row1_idx - 1] as i32 + (q_err * 2) >> 4).clamp(0, 255);
+                    data[row1_idx - 1] = new_val as u8;
+                }
+                let new_val = (data[row1_idx] as i32 + (q_err * 3) >> 4).clamp(0, 255);
+                data[row1_idx] = new_val as u8;
+                
+                if x + 1 < width {
+                    let new_val = (data[row1_idx + 1] as i32 + (q_err * 2) >> 4).clamp(0, 255);
+                    data[row1_idx + 1] = new_val as u8;
+                }
+                if x + 2 < width {
+                    let new_val = (data[row1_idx + 2] as i32 + (q_err * 1) >> 4).clamp(0, 255);
+                    data[row1_idx + 2] = new_val as u8;
+                }
+            }
+        }
+    }
+
+    img
+}
+
+/// Sierra Lite dithering algorithm (fastest Sierra variant)
+/// Error distribution: divisor = 4
+fn sierra_lite_dither(mut img: GrayImage) -> GrayImage {
+    let width = img.width() as usize;
+    let height = img.height() as usize;
+    let data = img.as_mut();
+
+    for y in 0..height {
+        for x in 0..width {
+            let idx = y * width + x;
+            let old_pixel = data[idx] as i32;
+            let new_pixel = if old_pixel >= 127 { 255 } else { 0 };
+            data[idx] = new_pixel as u8;
+
+            let q_err = old_pixel - new_pixel;
+
+            // Current row - distribute to right
+            if x + 1 < width {
+                let new_val = (data[idx + 1] as i32 + (q_err * 2) >> 2).clamp(0, 255);
+                data[idx + 1] = new_val as u8;
+            }
+
+            // Next row
+            if y + 1 < height {
+                let row1_idx = (y + 1) * width + x;
+                
+                if x >= 1 {
+                    let new_val = (data[row1_idx - 1] as i32 + (q_err * 1) >> 2).clamp(0, 255);
+                    data[row1_idx - 1] = new_val as u8;
+                }
+                let new_val = (data[row1_idx] as i32 + (q_err * 1) >> 2).clamp(0, 255);
+                data[row1_idx] = new_val as u8;
+            }
+        }
+    }
+
+    img
+}
+
 /// Convert image to 1-bit using specified dithering method
 fn convert_to_1bit(img: DynamicImage, method: DitheringMethod) -> Result<GrayImage, DisplayError> {
     // First convert to grayscale
     let gray = img.to_luma8();
 
     match method {
+        DitheringMethod::None => {
+            // Simple threshold conversion
+            Ok(threshold_dither(&gray, 127))
+        }
         DitheringMethod::FloydSteinberg => {
             // Apply Floyd-Steinberg dithering with NEON optimization
             Ok(floyd_steinberg_dither_neon(gray))
+        }
+        DitheringMethod::Sierra => {
+            // Apply Sierra dithering
+            Ok(sierra_dither(gray))
+        }
+        DitheringMethod::Sierra2Row => {
+            // Apply Sierra 2-row dithering
+            Ok(sierra_2row_dither(gray))
+        }
+        DitheringMethod::SierraLite => {
+            // Apply Sierra Lite dithering
+            Ok(sierra_lite_dither(gray))
         }
         DitheringMethod::Simple => {
             // Use fast ordered dithering with NEON
