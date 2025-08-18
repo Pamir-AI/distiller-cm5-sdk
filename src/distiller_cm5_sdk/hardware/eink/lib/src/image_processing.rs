@@ -1,7 +1,9 @@
 use crate::error::DisplayError;
 use crate::firmware::DisplaySpec;
 use image::imageops::{self, FilterType};
-use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgb};
+use image::{DynamicImage, GenericImageView, GrayImage, ImageBuffer, Rgb};
+#[cfg(not(target_arch = "aarch64"))]
+use image::Luma;
 use std::path::Path;
 
 #[cfg(target_arch = "aarch64")]
@@ -544,8 +546,7 @@ fn pack_1bit_data(img: &GrayImage, width: usize, height: usize) -> Result<Vec<u8
 
     unsafe {
         let threshold = vdup_n_u8(128);
-        let mut pixel_idx = 0;
-        let mut byte_idx = 0;
+        // Variables removed - direct indexing used instead
 
         // Process row by row for proper byte alignment
         for y in 0..height {
