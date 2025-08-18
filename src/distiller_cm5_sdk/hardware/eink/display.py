@@ -812,6 +812,14 @@ class Display:
             self._display_raw(raw_data, mode)
         else:
             # Direct PNG display (must be 122x250)
+            # First convert PNG to raw data for capture functionality
+            try:
+                raw_data = self.convert_png_to_raw(filename)
+                self._last_display_data = raw_data
+            except Exception:
+                # If conversion fails, still try to display
+                pass
+            
             filename_bytes = filename.encode("utf-8")
             success = self._lib.display_image_png(filename_bytes, int(mode))
             if not success:
@@ -821,6 +829,9 @@ class Display:
         """Display raw 1-bit image data."""
         if len(data) != self.ARRAY_SIZE:
             raise DisplayError(f"Data must be exactly {self.ARRAY_SIZE} bytes, got {len(data)}")
+
+        # Store the data for capture functionality
+        self._last_display_data = data
 
         # Convert bytes to ctypes array
         data_array = (ctypes.c_ubyte * len(data))(*data)
@@ -1449,6 +1460,67 @@ class Display:
         return self.display_png_auto(
             image_path, mode, scaling, dithering, rotation, h_flip, v_flip, crop_x, crop_y
         )
+
+    def capture_display(self, output_path: str | None = None) -> str:
+        """
+        Capture the current display content and save it as a PNG file.
+        
+        This method saves whatever is currently shown on the e-ink display
+        to a PNG file for debugging, sharing, or documentation purposes.
+        
+        Args:
+            output_path: Path where to save the PNG. If None, saves to
+                        /tmp/eink_capture_YYYYMMDD_HHMMSS.png
+        
+        Returns:
+            Path to the saved PNG file
+            
+        Raises:
+            DisplayError: If capture fails
+        """
+        import datetime
+        from PIL import Image
+        
+        # Generate default filename if not provided
+        if output_path is None:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"/tmp/eink_capture_{timestamp}.png"
+        
+        try:
+            # Get display dimensions
+            width, height = self.get_dimensions()
+            bytes_per_row = (width + 7) // 8
+            total_bytes = bytes_per_row * height
+            
+            # Store the last displayed data if available
+            if hasattr(self, '_last_display_data'):
+                raw_data = self._last_display_data
+            else:
+                # If no data stored, create a placeholder
+                logger.warning("No display data captured yet. Creating blank image.")
+                raw_data = bytes([0x00] * total_bytes)
+            
+            # Convert packed bits to image
+            img = Image.new('1', (width, height), 0)
+            pixels = img.load()
+            
+            # Unpack bits from bytes
+            for y in range(height):
+                for x in range(width):
+                    byte_idx = y * bytes_per_row + (x // 8)
+                    bit_pos = 7 - (x % 8)  # MSB first
+                    if byte_idx < len(raw_data):
+                        bit_value = (raw_data[byte_idx] >> bit_pos) & 1
+                        pixels[x, y] = bit_value
+            
+            # Save as PNG
+            img.save(output_path, 'PNG')
+            logger.info(f"Display captured to: {output_path}")
+            
+            return output_path
+            
+        except Exception as e:
+            raise DisplayError(f"Failed to capture display: {e}")
 
 
 # Convenience functions for simple usage (following SDK pattern)

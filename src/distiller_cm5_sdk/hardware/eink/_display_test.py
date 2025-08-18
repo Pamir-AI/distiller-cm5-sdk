@@ -24,6 +24,7 @@ from distiller_cm5_sdk.hardware.eink.display import (
     DisplayMode,
     DitheringMethod,
     FirmwareType,
+    RotationMode,
     ScalingMethod,
     get_default_firmware,
     get_display_info,
@@ -347,7 +348,7 @@ def main():
         try:
             display.display_image_auto(
                 temp_path,
-                DisplayMode.FULL,
+                mode=DisplayMode.FULL,
                 scaling=ScalingMethod.STRETCH,
                 dithering=DitheringMethod.FLOYD_STEINBERG,
             )
@@ -369,7 +370,7 @@ def main():
         try:
             display.display_image_auto(
                 temp_path,
-                DisplayMode.FULL,
+                mode=DisplayMode.FULL,
                 scaling=ScalingMethod.STRETCH,
                 dithering=DitheringMethod.SIMPLE,
             )
@@ -391,18 +392,18 @@ def main():
                 print("Processing options:")
                 print("  Dithering: Floyd-Steinberg")
                 print("  Scaling: Letterbox")
-                print("  Rotate: True")
-                print("  Flip: True")
+                print("  Rotation: 90 degrees")
+                print("  H-Flip: True")
 
                 try:
                     print("Displaying image with Floyd-Steinberg...")
                     display.display_image_auto(
                         image_path,
-                        DisplayMode.FULL,
+                        mode=DisplayMode.FULL,
                         scaling=ScalingMethod.LETTERBOX,
                         dithering=DitheringMethod.FLOYD_STEINBERG,
-                        rotate=True,
-                        flop=True,
+                        rotation=RotationMode.ROTATE_90,
+                        h_flip=True,
                     )
                     print("✓ Image displayed with Floyd-Steinberg")
                     time.sleep(5)
@@ -414,11 +415,11 @@ def main():
 
                     display.display_image_auto(
                         image_path,
-                        DisplayMode.FULL,
+                        mode=DisplayMode.FULL,
                         scaling=ScalingMethod.LETTERBOX,
                         dithering=DitheringMethod.SIMPLE,
-                        rotate=True,
-                        flop=True,
+                        rotation=RotationMode.ROTATE_90,
+                        h_flip=True,
                     )
                     print("✓ Image displayed with Simple dithering")
                     time.sleep(5)
@@ -430,6 +431,16 @@ def main():
         else:
             print("\nTip: You can provide an image file as argument to test:")
             print(f"  python {sys.argv[0]} /path/to/image.png")
+
+        # Test capture functionality
+        print("\n--- Test 10: Capture display content ---")
+        print("Capturing current display content to PNG...")
+        try:
+            capture_path = display.capture_display()
+            print(f"✓ Display captured to: {capture_path}")
+            print("You can share this PNG file to show what's on the display")
+        except Exception as e:
+            print(f"Error capturing display: {e}")
 
         # Clear display
         print("\nClearing display...")
