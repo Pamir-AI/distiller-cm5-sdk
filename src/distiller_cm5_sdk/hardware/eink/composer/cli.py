@@ -431,10 +431,10 @@ def main():
                 0: RotationMode.NONE,
                 90: RotationMode.ROTATE_90,
                 180: RotationMode.ROTATE_180,
-                270: RotationMode.ROTATE_270
+                270: RotationMode.ROTATE_270,
             }
             rotation = rotation_map.get(args.rotate, RotationMode.NONE)
-            
+
             success = session.composer.display(
                 mode=mode, rotation=rotation, flip_h=args.flip_h, flip_v=args.flip_v
             )

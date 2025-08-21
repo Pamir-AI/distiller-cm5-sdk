@@ -5,17 +5,25 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 
+from pydantic import validator
+
 class TextLayerRequest(BaseModel):
-    text: str = Field(..., description="Text to display")
+    text: str = Field("", description="Text to display")
     x: int = Field(0, description="X position")
     y: int = Field(0, description="Y position")
-    color: int = Field(0, ge=0, le=255, description="Text color (0=black, 255=white)")
+    color: int = Field(0, description="Text color (0=black, 255=white)")
     font_size: int = Field(1, ge=1, le=5, description="Font scale factor")
     background: bool = Field(False, description="Add white background behind text")
     padding: int = Field(2, ge=0, description="Background padding in pixels")
     rotate: int = Field(0, description="Rotation in degrees")
     flip_h: bool = Field(False, description="Flip horizontally")
     flip_v: bool = Field(False, description="Flip vertically")
+    
+    @validator('color')
+    def validate_binary_color(cls, v):
+        if v not in [0, 255]:
+            raise ValueError('Color must be 0 (black) or 255 (white)')
+        return v
 
 
 class RectangleLayerRequest(BaseModel):
@@ -24,8 +32,14 @@ class RectangleLayerRequest(BaseModel):
     width: int = Field(50, ge=1, description="Rectangle width")
     height: int = Field(30, ge=1, description="Rectangle height")
     filled: bool = Field(False, description="Fill rectangle")
-    color: int = Field(0, ge=0, le=255, description="Rectangle color (0=black, 255=white)")
+    color: int = Field(0, description="Rectangle color (0=black, 255=white)")
     border_width: int = Field(1, ge=1, description="Border width for unfilled rectangles")
+    
+    @validator('color')
+    def validate_binary_color(cls, v):
+        if v not in [0, 255]:
+            raise ValueError('Color must be 0 (black) or 255 (white)')
+        return v
 
 
 class ImageLayerRequest(BaseModel):
@@ -50,9 +64,15 @@ class PlaceholderRequest(BaseModel):
     placeholder_type: Literal["ip", "qr"] = Field(..., description="Type of placeholder")
     width: int | None = Field(70, description="Width (for QR codes)")
     height: int | None = Field(70, description="Height (for QR codes)")
-    color: int = Field(0, ge=0, le=255, description="Color (for IP text)")
+    color: int = Field(0, description="Color (for IP text, 0=black, 255=white)")
     font_size: int = Field(1, ge=1, le=5, description="Font size (for IP text)")
     background: bool = Field(False, description="Background (for IP text)")
+    
+    @validator('color')
+    def validate_binary_color(cls, v):
+        if v not in [0, 255]:
+            raise ValueError('Color must be 0 (black) or 255 (white)')
+        return v
 
 
 class UpdateLayerRequest(BaseModel):
@@ -60,11 +80,17 @@ class UpdateLayerRequest(BaseModel):
     y: int | None = None
     visible: bool | None = None
     text: str | None = None
-    color: int | None = Field(None, ge=0, le=255)
+    color: int | None = None
     font_size: int | None = Field(None, ge=1, le=5)
     width: int | None = Field(None, ge=1)
     height: int | None = Field(None, ge=1)
     filled: bool | None = None
+    
+    @validator('color')
+    def validate_binary_color(cls, v):
+        if v is not None and v not in [0, 255]:
+            raise ValueError('Color must be 0 (black) or 255 (white)')
+        return v
 
 
 class DisplayRequest(BaseModel):

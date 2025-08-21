@@ -1,0 +1,326 @@
+/* Main application styles */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow: hidden;
+    user-select: none;
+}
+
+/* Application Container */
+.app-container {
+    display: grid;
+    grid-template-rows: 60px 1fr;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* Toolbar */
+.toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    padding: 0 var(--spacing-lg);
+    gap: var(--spacing-xl);
+}
+
+.toolbar-section {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.app-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.tool-separator {
+    width: 1px;
+    height: 24px;
+    background: var(--border-primary);
+    margin: 0 var(--spacing-sm);
+}
+
+/* Main Content Area */
+.main-content {
+    display: grid;
+    grid-template-columns: 250px 1fr 300px;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Panels */
+.panel {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-primary);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.panel:last-child {
+    border-right: none;
+    border-left: 1px solid var(--border-primary);
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-surface);
+}
+
+.panel-header h2 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+}
+
+/* Canvas Area */
+.canvas-area {
+    background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.canvas-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+}
+
+.canvas-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: auto;
+    padding: var(--spacing-2xl);
+}
+
+.canvas-container canvas {
+    position: absolute;
+    border: 1px solid var(--border-secondary);
+    box-shadow: var(--shadow-lg);
+}
+
+#mainCanvas {
+    background: white;
+    z-index: 1;
+}
+
+#gridCanvas {
+    pointer-events: none;
+    z-index: 2;
+}
+
+#selectionCanvas {
+    z-index: 3;
+}
+
+.canvas-info {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-primary);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* Layer List */
+.layer-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-sm);
+}
+
+.layer-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-xs);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.layer-item:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-secondary);
+}
+
+.layer-item.selected {
+    background: var(--bg-active);
+    border-color: var(--border-active);
+}
+
+.layer-item.hidden {
+    opacity: 0.5;
+}
+
+.layer-icon {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+}
+
+.layer-name {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.layer-actions {
+    display: flex;
+    gap: var(--spacing-xs);
+}
+
+/* Property Panel */
+.property-content {
+    flex: 1;
+    padding: var(--spacing-lg);
+    overflow-y: auto;
+}
+
+.property-group {
+    margin-bottom: var(--spacing-xl);
+}
+
+.property-group h3 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-md);
+}
+
+.property-field {
+    margin-bottom: var(--spacing-md);
+}
+
+.property-field label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.property-field input,
+.property-field select,
+.property-field textarea {
+    width: 100%;
+    padding: var(--spacing-sm);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 13px;
+    transition: border-color var(--transition-fast);
+}
+
+.property-field input:focus,
+.property-field select:focus,
+.property-field textarea:focus {
+    outline: none;
+    border-color: var(--border-active);
+}
+
+.property-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-sm);
+}
+
+.empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    text-align: center;
+    padding: var(--spacing-xl);
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-active);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--border-secondary);
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { transform: translate(-50%, -40%); opacity: 0; }
+    to { transform: translate(-50%, -50%); opacity: 1; }
+}
+
+@keyframes slideInRight {
+    from { 
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to { 
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOutRight {
+    from { 
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to { 
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}

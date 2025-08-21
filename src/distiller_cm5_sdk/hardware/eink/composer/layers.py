@@ -7,6 +7,20 @@ from typing import Literal, Optional, Union
 import numpy as np
 
 
+def validate_rotation(value: int) -> int:
+    """Validate rotation value is 0, 90, 180, or 270."""
+    if value not in (0, 90, 180, 270):
+        raise ValueError(f"Invalid rotation {value}. Must be 0, 90, 180, or 270")
+    return value
+
+
+def validate_color(value: int) -> int:
+    """Validate color value is between 0 and 255."""
+    if not 0 <= value <= 255:
+        raise ValueError(f"Invalid color {value}. Must be between 0 and 255")
+    return value
+
+
 @dataclass
 class Layer:
     id: str
@@ -33,6 +47,9 @@ class ImageLayer(Layer):
     width: int | None = None  # Custom width (None = auto-calculate from canvas)
     height: int | None = None  # Custom height (None = auto-calculate from canvas)
 
+    def __post_init__(self):
+        self.rotate = validate_rotation(self.rotate)
+
 
 @dataclass
 class TextLayer(Layer):
@@ -46,6 +63,10 @@ class TextLayer(Layer):
     background: bool = False  # Whether to draw white background
     padding: int = 2  # Padding around text background
 
+    def __post_init__(self):
+        self.rotate = validate_rotation(self.rotate)
+        self.color = validate_color(self.color)
+
 
 @dataclass
 class RectangleLayer(Layer):
@@ -55,3 +76,6 @@ class RectangleLayer(Layer):
     filled: bool = True
     color: int = 0  # 0=black, 255=white
     border_width: int = 1  # Border width for unfilled rectangles
+
+    def __post_init__(self):
+        self.color = validate_color(self.color)

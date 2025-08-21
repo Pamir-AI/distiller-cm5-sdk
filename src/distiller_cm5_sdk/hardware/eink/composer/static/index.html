@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-ink Composer</title>
+    <link rel="stylesheet" href="/static/css/variables.css">
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header Toolbar -->
+        <header class="toolbar">
+            <div class="toolbar-section">
+                <h1 class="app-title">E-ink Composer</h1>
+            </div>
+            <div class="toolbar-section tools">
+                <button class="tool-btn active" data-tool="select" title="Select Tool (V)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" data-tool="text" title="Text Tool (T)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <polyline points="4 7 4 4 20 4 20 7"/>
+                        <line x1="9" y1="20" x2="15" y2="20"/>
+                        <line x1="12" y1="4" x2="12" y2="20"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" data-tool="rectangle" title="Rectangle Tool (R)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <rect x="3" y="3" width="18" height="18"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" data-tool="image" title="Image Tool (I)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <rect x="3" y="3" width="18" height="18"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                </button>
+                <div class="tool-separator"></div>
+                <button class="tool-btn" data-tool="ip" title="Add IP Address">IP</button>
+                <button class="tool-btn" data-tool="qr" title="Add QR Code">QR</button>
+            </div>
+            <div class="toolbar-section actions">
+                <button class="action-btn" id="undoBtn" title="Undo (Ctrl+Z)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M3 7v6h6"/>
+                        <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
+                    </svg>
+                </button>
+                <button class="action-btn" id="redoBtn" title="Redo (Ctrl+Y)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M21 7v6h-6"/>
+                        <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"/>
+                    </svg>
+                </button>
+                <div class="tool-separator"></div>
+                <button class="action-btn" id="clearLayersBtn" title="Clear All Layers">Clear Layers</button>
+                <button class="action-btn" id="clearDisplayBtn" title="Clear E-ink Display">Clear Display</button>
+                <div class="tool-separator"></div>
+                <button class="action-btn" id="saveBtn" title="Save Template">Save</button>
+                <button class="action-btn" id="loadBtn" title="Load Template">Load</button>
+                <div class="tool-separator"></div>
+                <button class="action-btn primary" id="displayBtn" title="Display on E-ink">
+                    Display
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Layer Panel -->
+            <aside class="panel layer-panel">
+                <div class="panel-header">
+                    <h2>Layers</h2>
+                    <button class="icon-btn" id="addLayerBtn" title="Add Layer">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="layer-list" id="layerList">
+                    <!-- Layers will be added here dynamically -->
+                </div>
+            </aside>
+
+            <!-- Canvas Area -->
+            <main class="canvas-area">
+                <div class="canvas-controls">
+                    <label class="toggle">
+                        <input type="checkbox" id="gridToggle" checked>
+                        <span>Grid</span>
+                    </label>
+                    <label class="toggle">
+                        <input type="checkbox" id="snapToggle" checked>
+                        <span>Snap</span>
+                    </label>
+                    <span class="zoom-indicator">100%</span>
+                </div>
+                <div class="canvas-container">
+                    <canvas id="mainCanvas"></canvas>
+                    <canvas id="gridCanvas"></canvas>
+                    <canvas id="selectionCanvas"></canvas>
+                </div>
+                <div class="canvas-info">
+                    <span id="canvasSize">250×128</span>
+                    <span id="cursorPos">0, 0</span>
+                </div>
+            </main>
+
+            <!-- Property Panel -->
+            <aside class="panel property-panel">
+                <div class="panel-header">
+                    <h2>Properties</h2>
+                </div>
+                <div class="property-content" id="propertyContent">
+                    <div class="empty-state">
+                        <p>Select a layer to edit its properties</p>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Modal for Save/Load -->
+    <div class="modal" id="templateModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Templates</h3>
+                <button class="close-btn" id="closeModalBtn">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Content will be added dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- File input for images (hidden) -->
+    <input type="file" id="imageInput" accept="image/*" style="display: none;">
+
+    <!-- Load JavaScript modules -->
+    <script src="/static/js/debug.js"></script>
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/state.js"></script>
+    <script src="/static/js/layers.js"></script>
+    <script src="/static/js/canvas.js"></script>
+    <script src="/static/js/tools.js"></script>
+    <script src="/static/js/ui.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
