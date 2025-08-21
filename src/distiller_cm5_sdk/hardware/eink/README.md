@@ -2,17 +2,19 @@
 
 A high-performance, production-ready e-ink display driver for ARM64 Linux devices, featuring a hybrid Python-Rust architecture optimized for Raspberry Pi CM5 and Distiller hardware.
 
-## 🚀 Quick Start
+> **Note**: This documentation reflects the current API. The main display method is `display.display_image()` (not `show_image()`). The Display class supports context managers for automatic resource management.
+
+## Quick Start
 
 ```python
-from distiller_cm5_sdk.hardware.eink import Display, display_image_auto
+from distiller_cm5_sdk.hardware.eink import Display, display_image
 
 # The simplest way - just display an image
-display_image_auto("/path/to/image.png")
+display_image("/path/to/image.png")
 
 # Or with more control
 display = Display()
-display.show_image("photo.jpg", dithering="floyd-steinberg")
+display.display_image("photo.jpg", dithering=DitheringMethod.FLOYD_STEINBERG)
 display.clear()
 ```
 
@@ -45,19 +47,17 @@ The Rust layer provides deterministic, real-time control over the hardware, whil
 The main interface for controlling e-ink displays:
 
 ```python
-from distiller_cm5_sdk.hardware.eink import Display, DisplayMode, DitheringMethod
+from distiller_cm5_sdk.hardware.eink import Display, DisplayMode, DitheringMethod, RotationMode, ScalingMethod
 
 display = Display(auto_init=True)  # Auto-detects firmware type
 
 # Display an image with advanced options
-display.show_image(
+display.display_image(
     "artwork.png",
     mode=DisplayMode.PARTIAL,        # Fast partial refresh
     dithering=DitheringMethod.SIERRA,  # High-quality dithering
-    rotation=90,                      # Rotate 90° clockwise
-    scaling="letterbox",              # Preserve aspect ratio
-    brightness=1.2,                   # Slight brightness boost
-    contrast=0.1                      # Subtle contrast enhancement
+    rotation=RotationMode.ROTATE_90,  # Rotate 90° clockwise
+    scaling=ScalingMethod.LETTERBOX  # Preserve aspect ratio
 )
 
 # Get display information
@@ -77,11 +77,11 @@ Two refresh modes optimize for different use cases:
 
 ```python
 # High-quality photo display
-display.show_image("photo.jpg", mode=DisplayMode.FULL)
+display.display_image("photo.jpg", mode=DisplayMode.FULL)
 
 # Fast UI updates
 for frame in animation_frames:
-    display.show_image(frame, mode=DisplayMode.PARTIAL)
+    display.display_image(frame, mode=DisplayMode.PARTIAL)
 ```
 
 ### Firmware Types
@@ -126,7 +126,7 @@ methods = [
 
 # Compare dithering quality
 for method in methods:
-    display.show_image("gradient.png", dithering=method)
+    display.display_image("gradient.png", dithering=method)
     time.sleep(2)
 ```
 
@@ -159,16 +159,16 @@ Full transformation pipeline for any orientation:
 from distiller_cm5_sdk.hardware.eink import RotationMode
 
 # Rotation modes
-display.show_image("photo.jpg", rotation=RotationMode.ROTATE_90)
-display.show_image("photo.jpg", rotation=RotationMode.ROTATE_180)
-display.show_image("photo.jpg", rotation=RotationMode.ROTATE_270)
+display.display_image("photo.jpg", rotation=RotationMode.ROTATE_90)
+display.display_image("photo.jpg", rotation=RotationMode.ROTATE_180)
+display.display_image("photo.jpg", rotation=RotationMode.ROTATE_270)
 
 # Combined transformations
-display.show_image(
+display.display_image(
     "photo.jpg",
-    rotation=90,
-    flip_horizontal=True,
-    flip_vertical=False
+    rotation=RotationMode.ROTATE_90,
+    h_flip=True,
+    v_flip=False
 )
 ```
 
@@ -180,13 +180,13 @@ Intelligent scaling preserves image quality:
 from distiller_cm5_sdk.hardware.eink import ScalingMethod
 
 # Letterbox: Maintain aspect ratio with black borders
-display.show_image("wide.jpg", scaling=ScalingMethod.LETTERBOX)
+display.display_image("wide.jpg", scaling=ScalingMethod.LETTERBOX)
 
 # Crop: Center crop to fill display
-display.show_image("tall.jpg", scaling=ScalingMethod.CROP_CENTER)
+display.display_image("tall.jpg", scaling=ScalingMethod.CROP_CENTER)
 
 # Stretch: Fill display (may distort)
-display.show_image("square.jpg", scaling=ScalingMethod.STRETCH)
+display.display_image("square.jpg", scaling=ScalingMethod.STRETCH)
 ```
 
 ## Image Caching System
@@ -200,10 +200,10 @@ from distiller_cm5_sdk.hardware.eink import Display
 display = Display(cache_size=100)  # LRU cache for 100 images
 
 # First display: processes and caches
-display.show_image("complex.png")  # ~500ms
+display.display_image("complex.png")  # ~500ms
 
 # Subsequent displays: uses cache
-display.show_image("complex.png")  # ~50ms (10x faster!)
+display.display_image("complex.png")  # ~50ms (10x faster!)
 
 # Cache persists across sessions
 display = Display(cache_persist_path="/tmp/eink_cache.json")
@@ -260,12 +260,12 @@ Minimize overhead with batch processing:
 # Inefficient: Multiple initializations
 for image in images:
     display = Display()
-    display.show_image(image)
+    display.display_image(image)
     
 # Efficient: Reuse display instance
 display = Display()
 for image in images:
-    display.show_image(image, mode=DisplayMode.PARTIAL)
+    display.display_image(image, mode=DisplayMode.PARTIAL)
 ```
 
 ### Partial Updates
@@ -274,10 +274,10 @@ Use partial refresh for responsive UIs:
 
 ```python
 # Full refresh: 2-3 seconds
-display.show_image("menu.png", mode=DisplayMode.FULL)
+display.display_image("menu.png", mode=DisplayMode.FULL)
 
 # Partial refresh: 200-300ms (10x faster!)
-display.show_image("menu_selected.png", mode=DisplayMode.PARTIAL)
+display.display_image("menu_selected.png", mode=DisplayMode.PARTIAL)
 ```
 
 ### Pre-Processing Pipeline
@@ -285,7 +285,9 @@ display.show_image("menu_selected.png", mode=DisplayMode.PARTIAL)
 Optimize images before display:
 
 ```python
-def optimize_for_eink(image_path):
+from PIL import Image, ImageEnhance
+
+def optimize_for_eink(image_path, display):
     """Pre-process images for optimal display."""
     img = Image.open(image_path)
     
@@ -296,14 +298,39 @@ def optimize_for_eink(image_path):
     enhancer = ImageEnhance.Contrast(img)
     img = enhancer.enhance(1.5)
     
-    # Resize to exact display dimensions
-    img = img.resize((display.width, display.height), Image.LANCZOS)
+    # Get display dimensions
+    width, height = display.get_dimensions()
     
-    return img
+    # Resize to exact display dimensions
+    img = img.resize((width, height), Image.LANCZOS)
+    
+    # Save to temp file for display
+    temp_path = "/tmp/optimized.png"
+    img.save(temp_path)
+    return temp_path
 
 # Pre-processed images display 2-3x faster
-optimized = optimize_for_eink("photo.jpg")
-display.show_image(optimized, skip_processing=True)
+optimized_path = optimize_for_eink("photo.jpg", display)
+display.display_image(optimized_path)
+```
+
+## Resource Management
+
+The Display class supports context managers for automatic resource management:
+
+```python
+from distiller_cm5_sdk.hardware.eink import Display
+
+# Automatic resource management with context manager
+with Display() as display:
+    display.display_image("photo.jpg")
+    # Hardware is automatically released when exiting the context
+
+# Or manual management
+display = Display()
+display.display_image("photo.jpg")
+display.release_hardware()  # Release when done
+display.reacquire_hardware()  # Reacquire when needed again
 ```
 
 ## Error Handling
@@ -315,7 +342,7 @@ from distiller_cm5_sdk.hardware.eink import Display, DisplayError
 
 try:
     display = Display()
-    display.show_image("image.png")
+    display.display_image("image.png")
 except DisplayError as e:
     print(f"Display error: {e}")
     # Specific error types:
@@ -341,7 +368,7 @@ lock = threading.Lock()
 
 def update_region(region_image):
     with lock:
-        display.show_image(region_image, mode=DisplayMode.PARTIAL)
+        display.display_image(region_image, mode=DisplayMode.PARTIAL)
 
 # Safe concurrent updates
 threads = []
@@ -367,8 +394,8 @@ from distiller_cm5_sdk.hardware.eink._display_test import (
 )
 
 # Display test patterns
-display.show_image(create_checkerboard_pattern(128, 250))
-display.show_image(create_gradient_pattern(128, 250))
+display.display_image(create_checkerboard_pattern(128, 250))
+display.display_image(create_gradient_pattern(128, 250))
 ```
 
 ## Troubleshooting
@@ -401,14 +428,14 @@ set_default_firmware(FirmwareType.EPD240x416)
 **Slow refresh rates:**
 ```python
 # Use partial refresh for speed
-display.show_image("ui.png", mode=DisplayMode.PARTIAL)
+display.display_image("ui.png", mode=DisplayMode.PARTIAL)
 
 # Enable caching
 display = Display(cache_size=200)
 
 # Pre-process images
 img = Image.open("photo.jpg").convert('L')
-display.show_image(img)
+display.display_image(img)
 ```
 
 ### Debug Mode
@@ -430,28 +457,34 @@ display = Display()
 ```python
 from pathlib import Path
 import time
+from distiller_cm5_sdk.hardware.eink import (
+    Display, DisplayMode, DitheringMethod, ScalingMethod
+)
 
 def photo_frame(photo_dir, interval=30):
-    display = Display()
-    photos = list(Path(photo_dir).glob("*.jpg"))
-    
-    while True:
-        for photo in photos:
-            display.show_image(
-                str(photo),
-                mode=DisplayMode.FULL,
-                dithering=DitheringMethod.FLOYD_STEINBERG,
-                scaling=ScalingMethod.LETTERBOX
-            )
-            time.sleep(interval)
+    with Display() as display:
+        photos = list(Path(photo_dir).glob("*.jpg"))
+        
+        while True:
+            for photo in photos:
+                display.display_image(
+                    str(photo),
+                    mode=DisplayMode.FULL,
+                    dithering=DitheringMethod.FLOYD_STEINBERG,
+                    scaling=ScalingMethod.LETTERBOX
+                )
+                time.sleep(interval)
 ```
 
 ### Weather Display
 
 ```python
+from distiller_cm5_sdk.hardware.eink.composer import EinkComposer
+from distiller_cm5_sdk.hardware.eink import DisplayMode
+
 def weather_dashboard(weather_data):
-    display = Display()
-    composer = EinkComposer(display.width, display.height)
+    # EinkComposer can auto-detect display dimensions
+    composer = EinkComposer()
     
     # Add weather icon
     composer.add_image_layer(
@@ -467,9 +500,8 @@ def weather_dashboard(weather_data):
         x=80, y=30, font_size=2
     )
     
-    # Render and display
-    image = composer.render()
-    display.show_image(image, mode=DisplayMode.PARTIAL)
+    # Display directly using composer
+    composer.display(mode=DisplayMode.PARTIAL)
 ```
 
 ## Performance Benchmarks
