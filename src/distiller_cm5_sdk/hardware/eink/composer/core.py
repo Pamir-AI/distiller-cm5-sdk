@@ -9,17 +9,30 @@ from typing import Literal, Optional, Union
 import numpy as np
 from PIL import Image
 
-from .. import Display, DisplayMode, DitheringMethod, RotationMode, ScalingMethod
+from .. import Display, DisplayError, DisplayMode, DitheringMethod, RotationMode, ScalingMethod
 from .layers import ImageLayer, Layer, RectangleLayer, TextLayer
 from .text import measure_text, render_text
 
 
 class EinkComposer:
-    def __init__(self, width: int = 128, height: int = 250):
-        self.width = width
-        self.height = height
+    def __init__(self, width: int | None = None, height: int | None = None):
+        # If dimensions not provided, get from display
+        if width is None or height is None:
+            try:
+                with Display(auto_init=False) as display:
+                    detected_width, detected_height = display.get_dimensions()
+                    self.width = width if width is not None else detected_width
+                    self.height = height if height is not None else detected_height
+            except Exception:
+                # Fall back to common default if detection fails
+                self.width = width if width is not None else 128
+                self.height = height if height is not None else 250
+        else:
+            self.width = width
+            self.height = height
+        
         self.layers: list[Layer] = []
-        self.canvas = np.full((height, width), 255, dtype=np.uint8)
+        self.canvas = np.full((self.height, self.width), 255, dtype=np.uint8)
         self._display: Display | None = None
 
     def _get_display(self) -> Display:
@@ -235,7 +248,7 @@ class EinkComposer:
 
         try:
             if layer.image_path:
-                # Use SDK's Rust-based image processing exclusively
+                # Use SDK's public API for image processing
                 display = self._get_display()
 
                 # Determine target size
@@ -254,16 +267,11 @@ class EinkComposer:
                 # Map dithering modes
                 dithering = DitheringMethod.FLOYD_STEINBERG
                 if layer.dither_mode == "threshold":
-                    dithering = DitheringMethod.SIMPLE
+                    dithering = DitheringMethod.NONE  # Use NONE for simple threshold
                 elif layer.dither_mode == "none":
-                    dithering = DitheringMethod.SIMPLE  # SDK doesn't have 'none', use simple
+                    dithering = DitheringMethod.NONE  # Use NONE for no dithering
 
-                # Initialize display if needed
-                if not display.is_initialized():
-                    display.reacquire_hardware()
-
-                # Use SDK's Rust-based image processing
-                # Convert rotation and flips to SDK format
+                # Convert rotation to SDK format
                 rotation_mode = RotationMode.NONE
                 if layer.rotate == 90:
                     rotation_mode = RotationMode.ROTATE_90
@@ -272,43 +280,45 @@ class EinkComposer:
                 elif layer.rotate == 270:
                     rotation_mode = RotationMode.ROTATE_270
 
-                # Use the _convert_image_rust method for Rust processing
-                processed_data = display._convert_image_rust(
-                    layer.image_path,
-                    scaling,
-                    dithering,
-                    rotation_mode,
-                    layer.flip_h,
-                    layer.flip_v,
-                    layer.crop_x,
-                    layer.crop_y,
-                )
-
-                # Release hardware after processing
-                display.release_hardware()
-
-                if processed_data:
-                    # Convert 1-bit packed data to numpy array
-                    # Unpack the bits from the processed data
-                    img_array = []
-                    for byte in processed_data:
-                        for bit_idx in range(8):
-                            bit = (byte >> (7 - bit_idx)) & 1
-                            img_array.append(255 if bit else 0)
-
-                    # Trim to exact size and reshape
-                    img_array = np.array(img_array[: target_width * target_height], dtype=np.uint8)
-                    img_array = img_array.reshape((target_height, target_width))
-
-                    # Composite onto canvas
-                    self._composite_onto_canvas(canvas, img_array, layer.x, layer.y)
-                else:
-                    print(f"Warning: SDK failed to process image {layer.image_path}")
+                # Use the public _convert_image_auto method to get a processed PNG
+                with display:
+                    # Get actual display dimensions
+                    display_width, display_height = display.get_dimensions()
+                    
+                    # Use the public API to convert the image
+                    temp_path = display._convert_image_auto(
+                        layer.image_path,
+                        scaling,
+                        dithering,
+                        rotation_mode,
+                        layer.flip_h,
+                        layer.flip_v,
+                        layer.crop_x,
+                        layer.crop_y,
+                    )
+                    
+                    if temp_path:
+                        # Load the processed image
+                        from PIL import Image as PILImage
+                        processed_img = PILImage.open(temp_path).convert('L')
+                        img_array = np.array(processed_img, dtype=np.uint8)
+                        
+                        # Resize if needed to match target size
+                        if img_array.shape != (target_height, target_width):
+                            processed_img = processed_img.resize((target_width, target_height), PILImage.LANCZOS)
+                            img_array = np.array(processed_img, dtype=np.uint8)
+                        
+                        # Composite onto canvas
+                        self._composite_onto_canvas(canvas, img_array, layer.x, layer.y)
+                    else:
+                        print(f"Warning: Failed to process image {layer.image_path}")
 
             elif layer.image_data is not None:
                 # Use provided numpy array directly
                 self._composite_onto_canvas(canvas, layer.image_data, layer.x, layer.y)
 
+        except DisplayError as e:
+            print(f"Warning: Display error processing image layer {layer.id}: {e}")
         except Exception as e:
             print(f"Warning: Failed to process image layer {layer.id}: {e}")
 
@@ -406,36 +416,32 @@ class EinkComposer:
                 pil_img.save(tmp.name)
                 tmp_path = tmp.name
 
-            # Use SDK's display functionality with proper rotation enum
-            display = self._get_display()
-            if not display.is_initialized():
-                display.reacquire_hardware()
-
-            # Display using SDK's optimized path with transformations
-            # The SDK's display_image method will handle the transformations
-            success = display.display_image(
-                tmp_path, mode, rotation=rotation, h_flip=flip_h, v_flip=flip_v
-            )
-
-            # Release hardware after display
-            display.release_hardware()
+            # Use SDK's display functionality with context manager for proper resource handling
+            with self._get_display() as display:
+                # Display using SDK's optimized path with transformations
+                # Note: display_image doesn't return a value, it raises DisplayError on failure
+                display.display_image(
+                    tmp_path, mode, rotation=rotation, h_flip=flip_h, v_flip=flip_v
+                )
 
             Path(tmp_path).unlink(missing_ok=True)
+            return True
 
-            return success
-
+        except DisplayError as e:
+            print(f"Display hardware error: {e}")
+            return False
         except Exception as e:
             print(f"Display error: {e}")
             return False
 
     def clear_display(self) -> bool:
         try:
-            display = self._get_display()
-            if not display.is_initialized():
-                display.reacquire_hardware()
-            display.clear()
-            display.release_hardware()  # Release after clearing
+            with self._get_display() as display:
+                display.clear()
             return True
+        except DisplayError as e:
+            print(f"Clear display hardware error: {e}")
+            return False
         except Exception as e:
             print(f"Clear display error: {e}")
             return False

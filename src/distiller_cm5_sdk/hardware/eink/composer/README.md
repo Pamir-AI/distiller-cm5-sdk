@@ -2,6 +2,8 @@
 
 A powerful layer-based composition system for creating sophisticated e-ink displays with text, images, and graphics. Built on top of the Distiller CM5 SDK's high-performance Rust backend.
 
+> **Note**: The composer now supports automatic display dimension detection and improved resource management. Some methods shown in examples like `clear_layers()` and `move_layer_to_top()` are planned features - use individual layer operations for now.
+
 ## 🎨 What is Composer?
 
 Composer transforms e-ink displays from simple image viewers into dynamic, multi-layered canvases. Think of it as Photoshop for e-ink - stack layers, apply transformations, and create complex layouts programmatically or visually.
@@ -175,12 +177,14 @@ composer.set_layer_visibility("graph", False)
 # Remove layer
 composer.remove_layer("title")
 
-# Clear all layers
-composer.clear_layers()
+# Toggle layer visibility
+composer.toggle_layer("border")
 
-# Reorder layers (last added is on top)
-composer.move_layer_to_top("border")
-composer.move_layer_to_bottom("background")
+# Update layer properties
+composer.update_layer("title", x=20, y=30)
+
+# Get layer information
+layers = composer.get_layer_info()
 ```
 
 ## Template System
@@ -494,7 +498,8 @@ class MenuComposer:
         self.render_menu()
     
     def render_menu(self):
-        self.composer.clear_layers()
+        # Create fresh composer for clean render
+        self.composer = EinkComposer(128, 250)
         
         # Title
         self.composer.add_text_layer(
@@ -523,7 +528,9 @@ class MenuComposer:
     def move_selection(self, direction):
         self.selected = (self.selected + direction) % len(self.items)
         self.render_menu()
-        self.composer.display(mode="partial")  # Fast update
+        # Display with partial refresh for fast updates
+        from distiller_cm5_sdk.hardware.eink import DisplayMode
+        self.composer.display(mode=DisplayMode.PARTIAL)
 ```
 
 ### Live Data Display
@@ -536,7 +543,8 @@ async def live_clock():
     composer = EinkComposer(128, 250)
     
     while True:
-        composer.clear_layers()
+        # Create fresh composer for each update
+        composer = EinkComposer(128, 250)
         
         # Current time
         now = datetime.now()
@@ -556,7 +564,8 @@ async def live_clock():
         )
         
         # Update display with partial refresh
-        composer.display(mode="partial")
+        from distiller_cm5_sdk.hardware.eink import DisplayMode
+        composer.display(mode=DisplayMode.PARTIAL)
         
         await asyncio.sleep(1)
 
@@ -573,11 +582,11 @@ asyncio.run(live_clock())
 # Check layer exists
 print(composer.get_layer_info())
 
-# Verify visibility
-composer.set_layer_visibility("layer_id", True)
+# Toggle visibility
+composer.toggle_layer("layer_id")
 
-# Check z-order (last added is on top)
-composer.move_layer_to_top("layer_id")
+# Update layer properties
+composer.update_layer("layer_id", x=10, y=20)
 ```
 
 **Image distortion:**
@@ -621,17 +630,19 @@ composer.remove_layer("unused_layer")
 
 ```python
 class EinkComposer:
-    def __init__(self, width: int = 128, height: int = 250)
+    def __init__(self, width: int | None = None, height: int | None = None)
     def add_text_layer(layer_id: str, text: str, **kwargs) -> str
     def add_image_layer(layer_id: str, image_path: str, **kwargs) -> str
     def add_rectangle_layer(layer_id: str, **kwargs) -> str
     def remove_layer(layer_id: str) -> bool
-    def clear_layers() -> None
-    def set_layer_visibility(layer_id: str, visible: bool) -> None
-    def get_layer_info() -> List[Dict]
-    def render() -> Image
-    def save(output_path: str) -> None
-    def display(mode: str = "full") -> None
+    def update_layer(layer_id: str, **kwargs) -> bool
+    def toggle_layer(layer_id: str) -> bool
+    def get_layer_info() -> list[dict]
+    def render() -> np.ndarray
+    def save(filename: str, format: Literal["png", "bmp", "binary"] = "png") -> None
+    def display(mode: DisplayMode = DisplayMode.FULL, **kwargs) -> bool
+    def clear_display() -> bool
+    def save_json(filename: str) -> None
 ```
 
 ### Layer Classes

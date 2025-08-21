@@ -10,13 +10,15 @@ from .core import EinkComposer
 from .templates import TemplateRenderer
 
 try:
-    from .. import Display, DisplayMode
+    from .. import Display, DisplayError, DisplayMode, RotationMode
 
     HARDWARE_AVAILABLE = True
 except ImportError:
     HARDWARE_AVAILABLE = False
     Display = None
+    DisplayError = None
     DisplayMode = None
+    RotationMode = None
 
 
 class ComposerSession:
@@ -424,10 +426,15 @@ def main():
                 print(f"✓ Preview saved to {args.save_preview}")
 
             # Display on hardware
-            # Convert boolean rotate to RotationMode
-            from .. import RotationMode
-
-            rotation = RotationMode.ROTATE_90 if args.rotate else RotationMode.NONE
+            # Map rotation values to RotationMode enum
+            rotation_map = {
+                0: RotationMode.NONE,
+                90: RotationMode.ROTATE_90,
+                180: RotationMode.ROTATE_180,
+                270: RotationMode.ROTATE_270
+            }
+            rotation = rotation_map.get(args.rotate, RotationMode.NONE)
+            
             success = session.composer.display(
                 mode=mode, rotation=rotation, flip_h=args.flip_h, flip_v=args.flip_v
             )

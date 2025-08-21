@@ -15,7 +15,7 @@ except ImportError:
     QRCODE_AVAILABLE = False
     print("Warning: qrcode library not available. QR code placeholders will not work.")
 
-from .. import Display, DisplayMode
+from .. import Display, DisplayError, DisplayMode
 from .core import EinkComposer
 
 
@@ -235,6 +235,9 @@ class TemplateRenderer:
             # Display on hardware
             return composer.display(mode)
 
+        except DisplayError as e:
+            print(f"Display hardware error: {e}")
+            return False
         except Exception as e:
             print(f"Failed to render and display template: {e}")
             return False
