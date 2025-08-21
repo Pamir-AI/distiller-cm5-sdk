@@ -7,6 +7,7 @@ remove | upgrade)
 	rm -rf /opt/distiller-cm5-sdk/.venv
 	rm -f /opt/distiller-cm5-sdk/uv.lock
 	rm -f /opt/distiller-cm5-sdk/activate.sh
+	rm -rf /opt/distiller-cm5-sdk/src
 	
 	# Update shared library cache
 	ldconfig
