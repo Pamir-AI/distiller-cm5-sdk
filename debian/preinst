@@ -6,18 +6,41 @@ export PATH="/root/.local/bin:/root/.cargo/bin:$HOME/.local/bin:$HOME/.cargo/bin
 case "$1" in
 install | upgrade)
 	if ! command -v uv >/dev/null 2>&1; then
+		echo "Installing uv package manager..."
 		TEMP_DIR=$(mktemp -d)
 		trap 'rm -rf '"$TEMP_DIR" EXIT
 		
+		# Set installation directory to /usr/local/bin
+		export UV_INSTALL_DIR="/usr/local"
+		
 		if curl -LsSf https://astral.sh/uv/install.sh -o "$TEMP_DIR/install.sh" 2>/dev/null || \
 		   wget -q https://astral.sh/uv/install.sh -O "$TEMP_DIR/install.sh" 2>/dev/null; then
+			# Run installer with UV_INSTALL_DIR set
 			if sh "$TEMP_DIR/install.sh" >/dev/null 2>&1; then
-				if ! command -v uv >/dev/null 2>&1; then
-					echo "Warning: uv installed but not in PATH" >&2
+				# Check if uv is now available in /usr/local/bin
+				if [ -f "/usr/local/bin/uv" ]; then
+					echo "uv installed successfully to /usr/local/bin"
+				else
+					# Fallback: Check if it was installed to /root/.local/bin and move it
+					if [ -f "/root/.local/bin/uv" ]; then
+						echo "Moving uv to /usr/local/bin..."
+						mv /root/.local/bin/uv /usr/local/bin/
+						chmod 755 /usr/local/bin/uv
+					elif [ -f "$HOME/.local/bin/uv" ]; then
+						echo "Moving uv to /usr/local/bin..."
+						mv "$HOME/.local/bin/uv" /usr/local/bin/
+						chmod 755 /usr/local/bin/uv
+					fi
+				fi
+				
+				# Final verification
+				if [ ! -f "/usr/local/bin/uv" ] || ! /usr/local/bin/uv --version >/dev/null 2>&1; then
+					echo "ERROR: uv installation failed - binary not found or not working" >&2
+					exit 1
 				fi
 			else
-				echo "ERROR: uv package manager required but not installed" >&2
-				echo "Install with: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+				echo "ERROR: uv installer failed" >&2
+				echo "Install manually: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
 				exit 1
 			fi
 		else
@@ -25,6 +48,30 @@ install | upgrade)
 			echo "Install manually: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
 			exit 1
 		fi
+	else
+		echo "uv is already installed at: $(which uv)"
+	fi
+	
+	# Create required groups if they don't exist
+	for group in gpio spi i2c; do
+		if ! getent group $group >/dev/null; then
+			echo "Creating group: $group"
+			addgroup --system $group
+		fi
+	done
+	
+	# Create distiller user if it doesn't exist
+	if ! id -u distiller >/dev/null 2>&1; then
+		echo "Creating distiller user..."
+		adduser --system --group --no-create-home --shell /bin/false distiller
+		
+		# Add to hardware access groups
+		for group in gpio spi i2c dialout; do
+			if getent group $group >/dev/null; then
+				usermod -a -G $group distiller
+				echo "Added distiller to $group group"
+			fi
+		done
 	fi
 	;;
 

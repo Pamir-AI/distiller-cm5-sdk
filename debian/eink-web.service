@@ -4,13 +4,24 @@ After=network.target
 
 [Service]
 Type=exec
-User=root
+User=distiller
+Group=distiller
+SupplementaryGroups=gpio spi i2c dialout
 WorkingDirectory=/opt/distiller-cm5-sdk
 Environment="PATH=/opt/distiller-cm5-sdk/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONPATH=/opt/distiller-cm5-sdk/src"
+Environment="LD_LIBRARY_PATH=/opt/distiller-cm5-sdk/lib:/usr/lib"
+Environment="DISTILLER_EINK_LIB_PATH=/opt/distiller-cm5-sdk/lib/libdistiller_display_sdk_shared.so"
+Environment="EINK_COMPOSER_DEBUG=true"
+Environment="EINK_COMPOSER_LOG_LEVEL=INFO"
+Environment="EINK_COMPOSER_LOG_FILE=/tmp/eink_composer/debug.log"
+ExecStartPre=/bin/mkdir -p /tmp/eink_composer
+ExecStartPre=/bin/chmod 777 /tmp/eink_composer
 ExecStart=/usr/local/bin/eink-web
 Restart=on-failure
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

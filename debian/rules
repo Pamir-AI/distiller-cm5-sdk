@@ -56,6 +56,11 @@ override_dh_auto_install:
 	# Install systemd service file
 	install -D -m 644 debian/eink-web.service \
 		$(CURDIR)/debian/distiller-cm5-sdk/lib/systemd/system/eink-web.service
+	
+	# Install udev rules for hardware access
+	install -d $(CURDIR)/debian/distiller-cm5-sdk/usr/share/distiller-cm5-sdk
+	install -D -m 644 debian/99-distiller-eink.rules \
+		$(CURDIR)/debian/distiller-cm5-sdk/usr/share/distiller-cm5-sdk/99-distiller-eink.rules
 
 override_dh_python3:
 	# Skip dh_python3 - we manage Python environment with uv

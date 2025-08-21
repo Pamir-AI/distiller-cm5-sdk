@@ -1,0 +1,9 @@
+# E-ink display SPI device access
+SUBSYSTEM=="spidev", KERNEL=="spidev0.0", GROUP="spi", MODE="0660"
+
+# GPIO chip access for E-ink control signals
+SUBSYSTEM=="gpio", GROUP="gpio", MODE="0660"
+SUBSYSTEM=="gpiochip", KERNEL=="gpiochip0", GROUP="gpio", MODE="0660"
+
+# I2C devices (if needed for other hardware)
+SUBSYSTEM=="i2c-dev", GROUP="i2c", MODE="0660"

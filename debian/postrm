@@ -2,23 +2,77 @@
 set -e
 
 case "$1" in
-remove | upgrade)
-	# Clean up virtual environment
+remove)
+	# Stop service if running
+	if systemctl is-active --quiet eink-web; then
+		systemctl stop eink-web.service || true
+	fi
+	
+	# Clean up virtual environment and source during removal
 	rm -rf /opt/distiller-cm5-sdk/.venv
 	rm -f /opt/distiller-cm5-sdk/uv.lock
 	rm -f /opt/distiller-cm5-sdk/activate.sh
 	rm -rf /opt/distiller-cm5-sdk/src
+	
+	# Remove command-line tools
+	rm -f /usr/local/bin/eink-compose
+	rm -f /usr/local/bin/eink-web
+	
+	# Clean temp files
+	rm -rf /tmp/eink_composer
+	
+	# Update shared library cache
+	ldconfig
+	;;
+
+upgrade)
+	# During upgrade, only clean up venv and lock file, keep src
+	rm -rf /opt/distiller-cm5-sdk/.venv
+	rm -f /opt/distiller-cm5-sdk/uv.lock
+	rm -f /opt/distiller-cm5-sdk/activate.sh
+	# Note: We keep src directory during upgrades to avoid "src does not exist" error
 	
 	# Update shared library cache
 	ldconfig
 	;;
 
 purge)
+	echo "Purging Distiller CM5 SDK configuration..."
+	
+	# Stop and disable service if it exists
+	if systemctl list-unit-files | grep -q "eink-web.service"; then
+		systemctl stop eink-web.service || true
+		systemctl disable eink-web.service || true
+	fi
+	
 	# Remove entire SDK directory
 	rm -rf /opt/distiller-cm5-sdk
 	
+	# Remove command-line tools
+	rm -f /usr/local/bin/eink-compose
+	rm -f /usr/local/bin/eink-web
+	
+	# Remove temp directories
+	rm -rf /tmp/eink_composer
+	
+	# Remove log and lib directories if empty
+	rmdir /var/log/distiller 2>/dev/null || true
+	rmdir /var/lib/distiller 2>/dev/null || true
+	
+	# Remove udev rules
+	rm -f /etc/udev/rules.d/99-distiller-eink.rules
+	
+	# Reload udev rules
+	if command -v udevadm >/dev/null 2>&1; then
+		udevadm control --reload-rules || true
+	fi
+	
+	# Note: We don't remove the distiller user as it might be used by other packages
+	
 	# Update shared library cache
 	ldconfig
+	
+	echo "Distiller CM5 SDK configuration purged"
 	;;
 
 failed-upgrade | abort-install | abort-upgrade | disappear)
