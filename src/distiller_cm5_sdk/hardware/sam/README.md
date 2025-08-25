@@ -2,11 +2,11 @@
 
 ## Overview
 
-The LED module provides **static RGB LED control** for the CM5 device through the Linux sysfs interface. It supports multiple LEDs with individual control of RGB colors and brightness settings.
-
-**⚠️ Note: Animation modes and LED triggers have been disabled in this version. Only static color control is available.**
+The LED module provides **full RGB LED control** for the CM5 device through the Linux sysfs interface. It supports multiple LEDs with individual control of RGB colors, brightness settings, animation modes, and custom LED triggers.
 
 The module wraps the SAM driver's sysfs interface located at `/sys/class/leds/pamir:led*` and provides both a high-level Python API and legacy compatibility with the previous interface.
+
+The module is compatible with SAM protocol v0.2.0 which uses RGB444 internal encoding (4-bit per channel) for efficient communication with the hardware.
 
 ## Prerequisites
 
@@ -83,12 +83,12 @@ This interactive demo includes:
 - 🎯 LED discovery and initialization
 - 🎨 RGB color control (primary and secondary colors)
 - 💡 Brightness control (multiple levels)
-- 🔸 Multi-LED static control (different colors on each LED)
+- 🔸 Multi-LED control (different colors and modes on each LED)
 - 🎯 Convenience methods and bulk operations
-- 🧪 Error handling and validation (including disabled features)
+- 🧪 Error handling and validation
 - 🔐 Sudo mode management
-
-⚠️ **Note: Animation modes and triggers have been disabled - only static control is demonstrated.**
+- ✨ Animation modes (blink, fade, rainbow)
+- 🎭 LED triggers (heartbeat-rgb, breathing-rgb, rainbow-rgb)
 
 The demo waits for you to press Enter between each section, so you can see each feature in action.
 
@@ -166,48 +166,65 @@ r, g, b = led.get_rgb_color(0)
 print(f"Current color: R={r}, G={g}, B={b}")
 ```
 
-### Animation Modes (Disabled)
+### Animation Modes
 
 #### `set_animation_mode(led_id: int, mode: str, timing: Optional[int] = None) -> None`
 
-⚠️ **DISABLED**: Animation modes have been removed from this version.
+Set animation mode for a specific LED.
+
+Parameters:
+- `led_id`: LED number (0, 1, 2, etc.)
+- `mode`: Animation mode ('static', 'blink', 'fade', 'rainbow')
+- `timing`: Optional timing in milliseconds (100, 200, 500, or 1000)
+
+Supported modes:
+- `'static'`: Solid color (0x00)
+- `'blink'`: On/off blinking pattern (0x01)
+- `'fade'`: Smooth brightness transitions (0x02)
+- `'rainbow'`: Full spectrum color cycling (0x03)
 
 Raises:
-- `NotImplementedError`: Animation modes are not implemented
+- `LEDError`: If LED ID is invalid, mode is unknown, or timing is invalid
 
 #### `get_animation_mode(led_id: int) -> Tuple[str, int]`
 
-⚠️ **DISABLED**: Animation modes have been removed from this version.
+Get current animation mode and timing for a specific LED.
 
-Raises:
-- `NotImplementedError`: Animation modes are not implemented
+Returns:
+- Tuple of (mode_string, timing_ms)
 
-Use `get_rgb_color()` and `get_brightness()` for current LED state instead.
-
-### LED Triggers (Disabled)
+### LED Triggers
 
 #### `set_trigger(led_id: int, trigger: str) -> None`
 
-⚠️ **DISABLED**: LED triggers have been removed from this version.
+Set LED trigger for a specific LED.
+
+Parameters:
+- `led_id`: LED number (0, 1, 2, etc.)
+- `trigger`: Trigger name ('none', 'heartbeat-rgb', 'breathing-rgb', 'rainbow-rgb')
+
+Available triggers:
+- `'none'`: No trigger, manual control
+- `'heartbeat-rgb'`: Red heartbeat pattern (double-pulse)
+- `'breathing-rgb'`: Blue breathing animation
+- `'rainbow-rgb'`: Full spectrum rainbow cycling
 
 Raises:
-- `NotImplementedError`: LED triggers are not implemented
+- `LEDError`: If LED ID is invalid or trigger is not available
 
 #### `get_trigger(led_id: int) -> str`
 
-⚠️ **DISABLED**: LED triggers have been removed from this version.
+Get current trigger for a specific LED.
 
-Raises:
-- `NotImplementedError`: LED triggers are not implemented
+Returns:
+- Current trigger name (e.g., 'none', 'heartbeat-rgb')
 
 #### `get_available_triggers(led_id: int) -> List[str]`
 
-⚠️ **DISABLED**: LED triggers have been removed from this version.
+Get list of available triggers for a specific LED.
 
-Raises:
-- `NotImplementedError`: LED triggers are not implemented
-
-Use `set_rgb_color()` for static color control instead.
+Returns:
+- List of available trigger names
 
 ### Brightness Control
 
@@ -244,15 +261,33 @@ Set LED to static color. (Equivalent to `set_rgb_color()`)
 
 #### `blink_led(led_id: int, red: int, green: int, blue: int, timing: int = 500) -> None`
 
-⚠️ **DISABLED**: Raises `NotImplementedError` - use `set_rgb_color()` instead.
+Set a LED to blink with specified color.
+
+Parameters:
+- `led_id`: LED number (0, 1, 2, etc.)
+- `red`: Red component (0-255)
+- `green`: Green component (0-255)
+- `blue`: Blue component (0-255)
+- `timing`: Blink timing in milliseconds (100, 200, 500, or 1000)
 
 #### `fade_led(led_id: int, red: int, green: int, blue: int, timing: int = 1000) -> None`
 
-⚠️ **DISABLED**: Raises `NotImplementedError` - use `set_rgb_color()` instead.
+Set a LED to fade with specified color.
+
+Parameters:
+- `led_id`: LED number (0, 1, 2, etc.)
+- `red`: Red component (0-255)
+- `green`: Green component (0-255)
+- `blue`: Blue component (0-255)
+- `timing`: Fade timing in milliseconds (100, 200, 500, or 1000)
 
 #### `rainbow_led(led_id: int, timing: int = 1000) -> None`
 
-⚠️ **DISABLED**: Raises `NotImplementedError` - use `set_rgb_color()` instead.
+Set a LED to rainbow cycle mode.
+
+Parameters:
+- `led_id`: LED number (0, 1, 2, etc.)
+- `timing`: Rainbow cycle timing in milliseconds (100, 200, 500, or 1000)
 
 #### `turn_off(led_id: int) -> None`
 
@@ -284,10 +319,10 @@ led.set_color_all(255, 255, 255)      # All LEDs white
 led.set_brightness_all(100)           # All LEDs dimmed
 led.turn_off_all()                    # Turn off everything
 
-# Note: Animation methods now raise NotImplementedError
-# led.blink_led(0, 255, 0, 0)         # ❌ Disabled
-# led.fade_led(0, 0, 255, 0)          # ❌ Disabled  
-# led.rainbow_led(0)                  # ❌ Disabled
+# Animation methods are fully supported
+led.blink_led(0, 255, 0, 0)           # ✅ Blinking red
+led.fade_led(0, 0, 255, 0)            # ✅ Fading green  
+led.rainbow_led(0)                    # ✅ Rainbow cycle
 ```
 
 ## Legacy Compatibility
@@ -340,13 +375,25 @@ Common error scenarios:
 ## Constants and Validation
 
 ### Animation Modes
-⚠️ **DISABLED**: Animation modes have been removed.
+Supported animation modes:
+- `'static'` (0x00): Solid color, no animation
+- `'blink'` (0x01): On/off blinking pattern
+- `'fade'` (0x02): Smooth brightness transitions
+- `'rainbow'` (0x03): Full spectrum color cycling
 
-### Triggers  
-⚠️ **DISABLED**: LED triggers have been removed.
+### Triggers
+Available LED triggers:
+- `'none'`: No trigger, manual control
+- `'heartbeat-rgb'`: Red heartbeat pattern
+- `'breathing-rgb'`: Blue breathing animation
+- `'rainbow-rgb'`: Rainbow color cycling
 
 ### Timing Constraints
-⚠️ **DISABLED**: Animation timing is not applicable.
+Animation timing values (2-bit encoded):
+- 100ms (0x00): Fast animations
+- 200ms (0x01): Quick animations
+- 500ms (0x02): Moderate speed
+- 1000ms (0x03): Slow animations
 
 ### Value Ranges
 - RGB components: 0-255
@@ -363,12 +410,12 @@ led.set_rgb_color(0, 255, 0, 0)      # LED 0: Red
 led.set_rgb_color(1, 0, 255, 0)      # LED 1: Green  
 led.set_rgb_color(2, 0, 0, 255)      # LED 2: Blue
 
-# Different animation modes
+# Different animation modes (fully supported)
 led.blink_led(0, 255, 0, 0, 500)     # LED 0: Blinking red
-led.fade_led(1, 0, 255, 0, 800)      # LED 1: Fading green
+led.fade_led(1, 0, 255, 0, 500)      # LED 1: Fading green (500ms timing)
 led.rainbow_led(2, 1000)             # LED 2: Rainbow cycle
 
-# Different triggers
+# Different triggers (fully supported)
 led.set_trigger(0, "heartbeat-rgb")   # LED 0: Heartbeat
 led.set_trigger(1, "breathing-rgb")   # LED 1: Breathing
 led.set_trigger(2, "none")            # LED 2: No trigger
